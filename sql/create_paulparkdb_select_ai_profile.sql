@@ -12,7 +12,7 @@ whenever sqlerror exit sql.sqlcode rollback
 define profile_name = 'PAULPARK_SUPPLY_CHAIN_DEMO'
 define provider = 'google'
 define credential_name = 'GOOGLE_AI_CRED'
-define model = 'gemini-2.5-flash'
+define model = 'gemini-3.5-flash'
 
 declare
     l_count number;

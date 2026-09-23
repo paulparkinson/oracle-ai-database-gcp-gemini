@@ -1,5 +1,8 @@
 # GCP Setup Progress
 
+> Historical deployment log: paths below describe the original monorepo checkout.
+> New clones use `paulparkinson/oracle-ai-database-gcp-gemini` with this project at the repository root.
+
 This log records the actual migration work toward recreating the Oracle AI Database demo in the `oracle-public-488519` GCP project.
 
 ## 2026-04-12

@@ -170,8 +170,8 @@ On the new VM:
 
 Suggested paths:
 
-- repo: `/home/YOUR_VM_SSH_USER/oracle-ai-for-sustainable-dev`
-- runtime dir: `/home/YOUR_VM_SSH_USER/oracle-ai-for-sustainable-dev/oracle-ai-database-gcp-gemini/oracle_agent_java`
+- repo: `/home/YOUR_VM_SSH_USER/oracle-ai-database-gcp-gemini`
+- runtime dir: `/home/YOUR_VM_SSH_USER/oracle-ai-database-gcp-gemini/oracle_agent_java`
 
 ## Required Secret And Config Inputs
 

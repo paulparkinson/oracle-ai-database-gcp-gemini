@@ -113,11 +113,13 @@ public class GraphA2AConfiguration {
                                         "supply-chain",
                                         "dependencies",
                                         "sku",
-                                        "image"
+                                        "image",
+                                        "a2ui"
                                 ),
                                 List.of(
                                         "Show the supply chain dependency graph for a product and explain the active alert.",
                                         "Use the Oracle Database property graph to show supply chain dependencies and render the graph as an image.",
+                                        "Use the Oracle Database property graph to show supply chain dependencies for SKU-500 and render native A2UI graph-inspection controls.",
                                         "Show the supplier-to-warehouse dependency graph and explain the current disruption.",
                                         "Visualize the upstream supplier path and highlight the risky node.",
                                         "Map the dependency relationships from supplier to warehouse to retailer."
@@ -137,7 +139,8 @@ public class GraphA2AConfiguration {
                                         "database",
                                         "property-graph",
                                         "sku",
-                                        "dependencies"
+                                        "dependencies",
+                                        "a2ui"
                                 ),
                                 List.of(
                                         "Get the dependency graph for a product.",

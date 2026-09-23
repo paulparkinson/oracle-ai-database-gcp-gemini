@@ -31,30 +31,36 @@ final class InventoryActionCardFactory {
                 "ADK-based coordinator for final-stage inventory action planning. It gathers graph, spatial, and external signals, checks policy, and drafts a recommended inventory move that still requires approval.",
                 inventoryActionUrl,
                 null,
-                "0.0.2",
+                "0.0.3",
                 null,
-                new AgentCapabilities(false, false, false, List.of()),
-                List.of("text/plain"),
-                List.of("application/json", "text/plain"),
+                new AgentCapabilities(false, false, false, List.of(new io.a2a.spec.AgentExtension(
+                        "Provides native inventory-transfer review controls using the A2UI JSON format.",
+                        InventoryActionA2uiPayloads.extensionParams(),
+                        false,
+                        InventoryActionA2uiPayloads.EXTENSION_URI
+                ))),
+                List.of("text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
+                List.of("application/json", "text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
                 List.of(
                         new AgentSkill(
                                 "oracle_inventory_action_agent",
                                 "inventory-action-coordinator",
                                 "Coordinates the final inventory action stage by gathering evidence and recommending a transfer, expedite, substitute, or hold action.",
-                                List.of("llm", "orchestration"),
-                                List.of(),
-                                List.of("text/plain"),
-                                List.of("application/json", "text/plain"),
+                                List.of("llm", "orchestration", "inventory", "transfer", "approval", "a2ui"),
+                                List.of("Show inventory transfers with a minimum stockout risk of 70, limited to 3 recommendations.",
+                                        "Draft an inventory transfer for SKU-500 and render the approval controls as A2UI."),
+                                List.of("text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
+                                List.of("application/json", "text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
                                 null
                         ),
                         new AgentSkill(
                                 "oracle_inventory_action_agent-recommendInventoryAction",
                                 "recommendInventoryAction",
                                 "Given a product or risk prompt, gather graph, spatial, and external evidence before proposing a draft inventory move and indicating whether approval is required.",
-                                List.of("llm", "tools", "inventory"),
-                                List.of(),
-                                List.of("text/plain"),
-                                List.of("application/json", "text/plain"),
+                                List.of("llm", "tools", "inventory", "transfer", "approval", "a2ui"),
+                                List.of("Recommend a draft transfer for SKU-500 and provide A2UI approval controls."),
+                                List.of("text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
+                                List.of("application/json", "text/plain", InventoryActionA2uiPayloads.MIME_TYPE),
                                 null
                         )
                 ),

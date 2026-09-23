@@ -191,14 +191,20 @@ public class InventoryActionA2AController {
     private static List<Part<?>> responseParts(InventoryActionAdkService.InventoryActionResult result) {
         List<Part<?>> parts = new ArrayList<>();
         parts.add(new TextPart(result.responseText()));
-        if (result.draftAction() != null && !result.draftAction().isEmpty()) {
-            Map<String, Object> actionData = new LinkedHashMap<>();
+            if (result.draftAction() != null && !result.draftAction().isEmpty()) {
+                Map<String, Object> actionData = new LinkedHashMap<>();
             actionData.put("action", result.draftAction());
             if (result.policyResult() != null && !result.policyResult().isEmpty()) {
                 actionData.put("policy", result.policyResult());
+                }
+                parts.add(new DataPart(actionData));
+                for (Map<String, Object> a2uiMessage : InventoryActionA2uiPayloads.transferReviewMessages(result)) {
+                    parts.add(new DataPart(
+                            a2uiMessage,
+                            Map.of("mimeType", InventoryActionA2uiPayloads.MIME_TYPE)
+                    ));
+                }
             }
-            parts.add(new DataPart(actionData));
-        }
         return parts;
     }
 
@@ -206,6 +212,7 @@ public class InventoryActionA2AController {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("coordinator", result.orchestrationMode());
         metadata.put("traceCount", result.trace().size());
+        metadata.put("a2uiVersion", InventoryActionA2uiPayloads.VERSION);
         if (result.draftAction() != null && !result.draftAction().isEmpty()) {
             metadata.put("actionType", result.draftAction().get("actionType"));
             metadata.put("draftActionId", result.draftAction().get("draftActionId"));

@@ -2,19 +2,32 @@
   "name": "oracle_inventory_action_agent",
   "description": "ADK-based coordinator for final-stage inventory action planning. It gathers graph, spatial, and external signals, checks policy, and drafts a recommended inventory move that still requires approval.",
   "url": "https://34.186.79.96/inventory-action",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "capabilities": {
     "streaming": false,
     "pushNotifications": false,
     "stateTransitionHistory": false,
-    "extensions": []
+    "extensions": [
+      {
+        "uri": "https://a2ui.org/a2a-extension/a2ui/v0.8",
+        "description": "Provides native inventory-transfer review controls using the A2UI JSON format.",
+        "required": false,
+        "params": {
+          "supportedCatalogIds": [
+            "https://a2ui.org/specification/v0_8/standard_catalog_definition.json"
+          ]
+        }
+      }
+    ]
   },
   "defaultInputModes": [
-    "text/plain"
+    "text/plain",
+    "application/json+a2ui"
   ],
   "defaultOutputModes": [
     "application/json",
-    "text/plain"
+    "text/plain",
+    "application/json+a2ui"
   ],
   "skills": [
     {
@@ -23,15 +36,24 @@
       "description": "Coordinates the final inventory action stage by gathering evidence and recommending a transfer, expedite, substitute, or hold action.",
       "tags": [
         "llm",
-        "orchestration"
+        "orchestration",
+        "inventory",
+        "transfer",
+        "approval",
+        "a2ui"
       ],
-      "examples": [],
+      "examples": [
+        "Show inventory transfers with a minimum stockout risk of 70, limited to 3 recommendations.",
+        "Draft an inventory transfer for SKU-500 and render the approval controls as A2UI."
+      ],
       "inputModes": [
-        "text/plain"
+        "text/plain",
+        "application/json+a2ui"
       ],
       "outputModes": [
         "application/json",
-        "text/plain"
+        "text/plain",
+        "application/json+a2ui"
       ]
     },
     {
@@ -41,15 +63,22 @@
       "tags": [
         "llm",
         "tools",
-        "inventory"
+        "inventory",
+        "transfer",
+        "approval",
+        "a2ui"
       ],
-      "examples": [],
+      "examples": [
+        "Recommend a draft transfer for SKU-500 and provide A2UI approval controls."
+      ],
       "inputModes": [
-        "text/plain"
+        "text/plain",
+        "application/json+a2ui"
       ],
       "outputModes": [
         "application/json",
-        "text/plain"
+        "text/plain",
+        "application/json+a2ui"
       ]
     }
   ],

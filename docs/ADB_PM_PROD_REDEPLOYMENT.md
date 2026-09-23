@@ -59,7 +59,7 @@ After authenticating `gcloud`, inspect the existing VM, machine shape, services,
 Run the read-only database preflight on the VM:
 
 ```bash
-cd /path/to/oracle-ai-for-sustainable-dev/oracle-ai-database-gcp-gemini
+cd /path/to/oracle-ai-database-gcp-gemini
 bash sql/run_paulparkdb_demo_audit.sh
 ```
 
@@ -111,7 +111,7 @@ Verify the profile using the stockout question and inspect the generated SQL bef
 Fetch the pinned official scripts:
 
 ```bash
-cd /path/to/oracle-ai-for-sustainable-dev/oracle-ai-database-gcp-gemini
+cd /path/to/oracle-ai-database-gcp-gemini
 bash sql/fetch_official_oracle_ai_database_agent.sh
 ```
 
@@ -169,7 +169,7 @@ The user identity is enforced in Oracle Database. Gemini credentials do not gran
 Build and stage the Java runtime without replacing the existing A2UI/MCP processes:
 
 ```bash
-cd /path/to/oracle-ai-for-sustainable-dev/oracle-ai-database-gcp-gemini/oracle_agent_java
+cd /path/to/oracle-ai-database-gcp-gemini/oracle_agent_java
 ./build.sh
 ./run.sh
 ```

@@ -4,10 +4,10 @@ This directory contains the reproducible source and publication assets embedded
 in `../blog.html`. The video is silent so live narration can be added later.
 
 ```bash
-cd oracle-ai-database-gcp-gemini/video
+cd video # from the repository root
 swift build-video.swift
 swift verify-video.swift
-/Users/pparkins/.codex/skills/video-blog-walkthrough/scripts/audit_video.sh \
+../skills/video-blog-walkthrough/scripts/audit_video.sh \
   gemini-oracle-a2a-walkthrough.mp4 \
   gemini-oracle-a2a-walkthrough.srt \
   ../blog.html

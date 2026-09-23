@@ -1,10 +1,12 @@
 # Develop A2A Agentic AI with Oracle AI Database and Google Gemini including Oracle AI Database Agent in Gemini Enterprise
 
+Standalone repository: [paulparkinson/oracle-ai-database-gcp-gemini](https://github.com/paulparkinson/oracle-ai-database-gcp-gemini). See [migration notes](MIGRATION.md) and [included development skills](AGENTS.md).
+
 This project contains the Oracle AI Database and Google Gemini A2A demo shown in Google Next presentations. It demonstrates how Gemini Enterprise can call A2A agents backed by Oracle AI Database, including graph, spatial, Select AI, inventory-risk, and action-recommendation flows.
 
 The Java agent runtime is the implementation used in the live demo. The Python and Go agents are included as work in progress and reference implementations while they continue to evolve.
 
-[Read the implementation blog](https://paulparkinson.github.io/oracle-ai-for-sustainable-dev/oracle-ai-database-gcp-gemini/blog.html), including the deployment architecture, database entity model, SQL setup, A2A agents, Gemini Enterprise registration, verification results, and remaining prerequisites.
+[Read the implementation blog](https://paulparkinson.github.io/oracle-ai-database-gcp-gemini/blog.html), including the deployment architecture, database entity model, SQL setup, A2A agents, Gemini Enterprise registration, verification results, and remaining prerequisites.
 
 ## Watch The Demo
 
