@@ -18,15 +18,10 @@ The graph renderer still uses deterministic application logic plus custom Java2D
 
 ## Related Files
 
-- [`../sql/supply_chain_graph_model.sql`](../sql/supply_chain_graph_model.sql): shared example Oracle tables, property-graph definition, and query pattern for replacing the current seeded demo data with real database results.
 - [`../sql/setup_supply_chain_graph_schema.sql`](../sql/setup_supply_chain_graph_schema.sql): shared idempotent setup DDL for creating the graph demo tables and property graph in Oracle Database.
-- [`../sql/run_supply_chain_graph_setup.sh`](../sql/run_supply_chain_graph_setup.sh): shared SQLcl-based wrapper that logs precheck, setup, and postcheck output into a timestamped `sql/logs/` run directory.
 - [`../sql/seed_supply_chain_graph_data.sql`](../sql/seed_supply_chain_graph_data.sql): shared idempotent sample data seed for three supply-chain paths, including `SKU-500`.
-- [`../sql/run_supply_chain_graph_seed.sh`](../sql/run_supply_chain_graph_seed.sh): shared SQLcl-based wrapper that logs row counts and runs verification queries after seeding.
 - [`../sql/setup_inventory_risk_demo_schema.sql`](../sql/setup_inventory_risk_demo_schema.sql): shared idempotent setup DDL for the inventory-risk summary, warehouse-geo, and hotspot tables used by the spatial and Select AI flows.
 - [`../sql/seed_inventory_risk_demo_data.sql`](../sql/seed_inventory_risk_demo_data.sql): shared idempotent sample data seed for the spatial and Select AI demo tables.
-- [`../sql/extend_sales_data_profile_with_inventory.sql`](../sql/extend_sales_data_profile_with_inventory.sql): shared script that safely extends an existing `SALES_DATA_PROFILE` with the inventory-risk `SC_*` objects while preserving a `SALES_DATA_PROFILE_BEFORE_SC` rollback profile.
-- [`../sql/configure_select_ai_openai_profile.sql`](../sql/configure_select_ai_openai_profile.sql): shared example database-side setup for a demo `DBMS_CLOUD_AI` profile using an external provider such as OpenAI.
 - [`GRAPH_DATA_MODES.md`](GRAPH_DATA_MODES.md): how `GRAPH_DATA_MODE=database|payload|auto` works, the supported JSON contract, and the validation rules for multi-agent flows.
 - [`MULTI_AGENT_GRAPH_FLOW.md`](MULTI_AGENT_GRAPH_FLOW.md): architecture notes for direct DB lookup vs upstream-agent payload handoff, including provenance, validation, and recommended `auto` behavior.
 - [`HTTPS_SETUP.md`](HTTPS_SETUP.md): step-by-step Let's Encrypt and public HTTPS setup for Gemini Enterprise.

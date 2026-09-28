@@ -1,5 +1,5 @@
 -- Read-only preflight for the paulparkdb supply-chain demo.
--- Run through run_paulparkdb_demo_audit.sh so DEMO_OWNER is supplied safely.
+-- Run with SQLcl and pass the schema owner as the first argument.
 
 set verify off echo off feedback on pagesize 500 linesize 220 trimspool on
 set serveroutput on size unlimited

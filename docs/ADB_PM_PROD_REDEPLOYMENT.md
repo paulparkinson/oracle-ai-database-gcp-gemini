@@ -39,7 +39,7 @@ Suggest actions to take for the SKU in question.
 - [Google documentation: Register and manage A2A agents](https://docs.cloud.google.com/gemini/enterprise/docs/register-and-manage-an-a2a-agent)
 - [Demo video: Oracle AI Database Agent for Gemini Enterprise](https://www.youtube.com/watch?v=lU8UAwmBMeQ)
 
-The official Oracle installer is fetched at pinned commit `7c61fc86ffb7f0f548bdba32ae53ce46ea876fa2` and verified with SHA-256 checksums by `sql/fetch_official_oracle_ai_database_agent.sh`.
+The official Oracle installer is fetched at pinned commit `7c61fc86ffb7f0f548bdba32ae53ce46ea876fa2` and verified with SHA-256 checksums before execution.
 
 ## Safety rules
 
@@ -60,7 +60,7 @@ Run the read-only database preflight on the VM:
 
 ```bash
 cd /path/to/oracle-ai-database-gcp-gemini
-bash sql/run_paulparkdb_demo_audit.sh
+sql -S "$DB_USERNAME/$DB_PASSWORD@$DB_DSN" @sql/audit_paulparkdb_demo.sql FINANCIAL
 ```
 
 The audit reports connection identity, relevant schema names, `SC_*` object ownership, Select AI profile names, Select AI agent-team names, and required package visibility. It does not print credentials or business rows and makes no changes.
@@ -93,7 +93,8 @@ relational joins and identifies its source as `database-relational-fallback`.
 
 ## Phase 3: create the narrow Select AI profile
 
-Reuse a working provider credential already owned by the selected schema. Prefer creating a dedicated profile named `PAULPARK_SUPPLY_CHAIN_DEMO`; if the Oracle Marketplace agent is already bound to another working profile, use `configure_select_ai_demo_profile.sql` to clone its provider settings and add the demo objects.
+Create a dedicated narrow profile named `PAULPARK_SUPPLY_CHAIN_OPENAI` or
+`PAULPARK_SUPPLY_CHAIN_DEMO` for the selected provider.
 
 The `FINANCIAL` audit found no existing Select AI profile to clone. Run
 `sql/create_google_select_ai_credential.sql` as `FINANCIAL` with a paid Google
@@ -102,7 +103,6 @@ object list contains only the demo tables, view, and property graph. The scripts
 do not echo the API key and refuse to replace an existing credential/profile, so
 a working configuration cannot be silently destroyed.
 
-Do not run `extend_sales_data_profile_with_inventory.sql` until the audit confirms that `SALES_DATA_PROFILE` exists and is the profile actually bound to the managed agent. That script creates `SALES_DATA_PROFILE_BEFORE_SC` as a rollback snapshot before rebuilding the original profile.
 
 Verify the profile using the stockout question and inspect the generated SQL before proceeding.
 
@@ -112,7 +112,13 @@ Fetch the pinned official scripts:
 
 ```bash
 cd /path/to/oracle-ai-database-gcp-gemini
-bash sql/fetch_official_oracle_ai_database_agent.sh
+git clone --filter=blob:none --no-checkout https://github.com/oracle-devrel/oracle-autonomous-database-samples.git /tmp/oracle-autonomous-database-samples
+cd /tmp/oracle-autonomous-database-samples
+git sparse-checkout init --cone
+git sparse-checkout set google-gemini-marketplace-agents/oracle_ai_database_agent
+git checkout --detach 7c61fc86ffb7f0f548bdba32ae53ce46ea876fa2
+cd google-gemini-marketplace-agents/oracle_ai_database_agent
+sha256sum oracle_ai_database_agent.sql oracle_ai_database_agent_tool.sql
 ```
 
 Connect as `ADMIN` or as the target schema when it already has `EXECUTE` on
