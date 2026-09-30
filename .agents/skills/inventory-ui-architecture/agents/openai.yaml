@@ -1,0 +1,4 @@
+interface:
+  display_name: Inventory UI Architecture
+  short_description: Maintain MCP App exploration and A2UI action workflows
+  default_prompt: Design or update the inventory demo's MCP App and A2UI lanes, keeping agent orchestration, UI rendering, approval, and database writes correctly separated.

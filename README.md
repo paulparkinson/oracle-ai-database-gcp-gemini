@@ -156,6 +156,8 @@ The graph and spatial paths are deterministic and image-first by default. Set `V
 
 ## Documentation Index
 
+- [docs/INVENTORY_UI_ARCHITECTURE.md](./docs/INVENTORY_UI_ARCHITECTURE.md): the two-lane inventory design—MCP Apps for graph/spatial exploration and A2UI for agent-driven transfer review.
+
 Start here:
 
 - [docs/GEMINI_ENTERPRISE_AGENT_SETUP.md](./docs/GEMINI_ENTERPRISE_AGENT_SETUP.md): Gemini Enterprise import URLs, tested prompts, caveats, and expected behavior.
