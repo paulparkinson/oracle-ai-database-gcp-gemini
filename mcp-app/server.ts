@@ -168,6 +168,9 @@ async function loadOracleSpatialEvidence(sku: string, maximumRows: number) {
   };
 }
 
+// A stateless HTTP request owns its protocol instance. Sharing one McpServer
+// makes overlapping requests reconnect an already-connected transport.
+function createServer() {
 const server = new McpServer({
   name: "Oracle Supply-Chain Inventory Exchange MCP App",
   version: "0.1.0"
@@ -430,6 +433,9 @@ registerAppResource(
   })
 );
 
+return server;
+}
+
 const app = express();
 app.use(cors({ origin: false }));
 app.use(express.json({ limit: "256kb" }));
@@ -444,19 +450,22 @@ app.get(
     })
 );
 app.post("/mcp", async (request, response) => {
+  const server = createServer();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true
   });
-  response.on("close", () => transport.close());
+  response.on("close", () => { void server.close(); });
   await server.connect(transport);
   await transport.handleRequest(request, response, request.body);
 });
-app.listen(
+const listener = app.listen(
   port,
   bindHost,
-  () => console.log(
-    "Supply-chain MCP App server listening on "
-      + `http://${bindHost}:${port}/mcp`
-  )
+  () => {
+    const address = listener.address();
+    const boundPort = typeof address === "object" && address ? address.port : port;
+    console.log("Supply-chain MCP App server listening on "
+      + `http://${bindHost}:${boundPort}/mcp`);
+  }
 );

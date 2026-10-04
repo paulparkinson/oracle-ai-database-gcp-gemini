@@ -93,3 +93,38 @@ The public `dataaccess.adb.../adb/a2a/v1/agents/...` URL is not the private
 database route used by this deployment and may return an ACL-hidden 404. The
 runtime endpoint is the private relay URL, which forwards the caller/service
 OAuth bearer token to the database-private A2A endpoint.
+
+## OAuth renewal and October 4 validation
+
+The gateway automatically exchanges its refresh token for an access token and
+caches that access token until shortly before expiry. Interactive consent is
+not required for each map request. Local `gcloud auth login` is for deployment
+and log access; it is not part of the deployed application's authentication.
+
+On October 4, 2026, the gateway logs showed the Oracle token endpoint rejecting
+the previous refresh grant with HTTP 401 / `ADB-00015`. That response does not
+establish whether the grant expired or was revoked. A new browser consent
+completed using the existing client. Two subsequent refresh requests succeeded
+without additional consent; neither returned a replacement refresh token.
+Do not describe this incident as proven refresh-token rotation or promise that
+the new grant has an unlimited lifetime. The current Java client does not
+persist replacement refresh tokens if a provider later starts returning them.
+
+The renewed grant is stored in the existing Secret Manager secret. Updating an
+environment-variable secret requires a new Cloud Run revision for running
+instances to receive it. Tests of the deployed MCP action returned three
+hotspots for `SKU-500` and an empty hotspot list for `SKU-501`. An empty list
+means the managed agent supplied no spatial evidence for that request; it is
+not an authentication failure and does not prove the SKU is absent from every
+database table.
+
+The MCP server creates a separate protocol instance for each stateless HTTP
+request. Verify concurrent calls locally with:
+
+```bash
+cd mcp-app
+npm run typecheck
+node --test test/concurrent-requests.test.mjs
+```
+
+This regression test uses a delayed local test server, not live database data.
