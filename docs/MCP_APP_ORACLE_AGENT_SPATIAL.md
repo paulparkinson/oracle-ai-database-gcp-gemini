@@ -24,7 +24,10 @@ the MCP Toolkit. A failed managed-agent call is surfaced as an error.
 
 The data is **live database-backed reads of seeded demo data**, not production
 inventory telemetry. The SQL setup/seed files populate Oracle tables; they are
-not a frontend mock response. The read path does not itself query Google Search.
+not a frontend mock response. Both the US and Singapore/Sydney warehouse rows
+belong to this seeded dataset. “Live” describes querying Oracle at request time;
+“seeded” describes how the demonstration data was initially populated.
+The read path does not itself query Google Search.
 Gemini's surrounding narration is not evidence of any database operation.
 
 ## Run it in Gemini Enterprise
@@ -48,7 +51,7 @@ host will choose the correct tool from every wording:
 | --- | --- |
 | List the product IDs and names in the managed Oracle inventory catalog, and show the query scope. | `List-inventory-items`; scope `FINANCIAL.SC_PRODUCTS`. |
 | Show the spatial hotspot map for SKU-700. | Chicago destination, DFW source, Newark satellite in the verified demo dataset. |
-| Show the spatial hotspot map for SKU-APAC-210. | Singapore destination and Sydney source; different geography. |
+| Show the spatial hotspot map for SKU-APAC-210. | Singapore destination and Sydney source, instead of SKU-700's US warehouses. Both SKUs use the same seeded Oracle dataset. |
 | Use Show-inventory-spatial-hotspots for SKU-900, and summarize only the returned warehouse roles and hotspot scores. | Per-row SKU-900 identity; scores are not probabilities. |
 | Map SKU-APAC-420, then map SKU-APAC-210 so I can compare them. | Two spatial calls; each map retains its own SKU and returned rows. |
 | Show SKU-700 with maximumRows set to 2. | Display limit only; inspect `totalRows` and `truncated`. |
