@@ -45,6 +45,7 @@ public class SpatialA2AController {
     public SpatialA2AController(
             Environment environment,
             SpatialTools spatialTools,
+            OracleSpatialEvidenceService oracleSpatialEvidenceService,
             GeminiVisualRenderer geminiVisualRenderer,
             TaskStore taskStore,
             QueueManager queueManager,
@@ -53,7 +54,7 @@ public class SpatialA2AController {
     ) {
         AgentCard spatialCard = SpatialAgentCardFactory.buildSpatialAgentCard(environment);
         RequestHandler requestHandler = DefaultRequestHandler.create(
-                buildAgentExecutor(spatialTools, geminiVisualRenderer),
+                buildAgentExecutor(oracleSpatialEvidenceService),
                 taskStore,
                 queueManager,
                 pushNotificationConfigStore,
@@ -107,8 +108,7 @@ public class SpatialA2AController {
     }
 
     private static AgentExecutor buildAgentExecutor(
-            SpatialTools spatialTools,
-            GeminiVisualRenderer geminiVisualRenderer
+            OracleSpatialEvidenceService oracleSpatialEvidenceService
     ) {
         return new AgentExecutor() {
             @Override
@@ -122,64 +122,20 @@ public class SpatialA2AController {
 
                 try {
                     String userInput = context.getUserInput("");
-                    SpatialTools.SpatialResponse response = spatialTools.resolveSpatialResponse(userInput);
-                    if (geminiVisualRenderer.includeDeterministic()) {
-                        String imageBytes = spatialTools.renderHotspotPng(response);
-                        updater.addArtifact(
-                                List.of(
-                                        new FilePart(
-                                                new FileWithBytes(
-                                                        "image/png",
-                                                        "warehouse-hotspot-map.png",
-                                                        imageBytes
-                                                )
-                                        )
-                                ),
-                                null,
-                                "warehouse_hotspot_map_png",
-                                Map.of(
-                                        "productId", response.productId(),
-                                        "sourceMode", response.sourceMode(),
-                                        "contentType", "image/png",
-                                        "renderMode", "deterministic",
-                                        "sourceOfTruth", true
-                                )
-                        );
-                    }
-
-                    if (geminiVisualRenderer.includeGemini()) {
-                        geminiVisualRenderer.renderSpatial(response).ifPresent(imageBytes ->
-                                updater.addArtifact(
-                                        List.of(
-                                                new FilePart(
-                                                        new FileWithBytes(
-                                                                "image/png",
-                                                                "warehouse-hotspot-map-gemini.png",
-                                                                imageBytes
-                                                        )
-                                                )
-                                        ),
-                                        null,
-                                        "warehouse_hotspot_map_gemini_png",
-                                        Map.of(
-                                                "productId", response.productId(),
-                                                "sourceMode", response.sourceMode(),
-                                                "contentType", "image/png",
-                                                "renderMode", "gemini",
-                                                "sourceOfTruth", false
-                                        )
-                                )
-                        );
-                    }
+                    OracleSpatialEvidenceService.SpatialEvidence response =
+                            oracleSpatialEvidenceService.fetch(
+                                    OracleSpatialEvidenceService.skuFromPrompt(userInput)
+                            );
 
                     updater.complete(
                             updater.newAgentMessage(
                                     List.of(new TextPart(response.summaryText())),
                                     Map.of(
-                                            "tool", "renderHotspotMap",
-                                            "artifactName", "warehouse-hotspot-map.png",
-                                            "sourceMode", response.sourceMode(),
-                                            "visualRenderer", geminiVisualRenderer.renderMode().name().toLowerCase()
+                                            "source", response.source(),
+                                            "sku", response.sku(),
+                                            "hotspotCount", response.hotspots().size(),
+                                            "routePointCount", response.route().size(),
+                                            "sourceDetail", response.sourceDetail()
                                     )
                             )
                     );

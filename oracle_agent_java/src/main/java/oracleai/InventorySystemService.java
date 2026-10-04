@@ -24,6 +24,7 @@ public class InventorySystemService {
     private final InventoryActionAdkService inventoryActionAdkService;
     private final Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies;
     private final SpatialTools spatialTools;
+    private final OracleSpatialEvidenceService oracleSpatialEvidenceService;
     private final GeminiVisualRenderer geminiVisualRenderer;
 
     public InventorySystemService(
@@ -33,6 +34,7 @@ public class InventorySystemService {
             InventoryActionAdkService inventoryActionAdkService,
             Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies,
             SpatialTools spatialTools,
+            OracleSpatialEvidenceService oracleSpatialEvidenceService,
             GeminiVisualRenderer geminiVisualRenderer
     ) {
         this.environment = environment;
@@ -41,6 +43,7 @@ public class InventorySystemService {
         this.inventoryActionAdkService = inventoryActionAdkService;
         this.getSupplyChainDependencies = getSupplyChainDependencies;
         this.spatialTools = spatialTools;
+        this.oracleSpatialEvidenceService = oracleSpatialEvidenceService;
         this.geminiVisualRenderer = geminiVisualRenderer;
     }
 
@@ -55,7 +58,7 @@ public class InventorySystemService {
         return switch (route) {
             case ACTION -> routeAction(normalized);
             case GRAPH -> routeGraph(normalized);
-            case SPATIAL -> routeSpatial(normalized);
+            case SPATIAL -> routeSpatial(normalized, authorizationHeader);
             case DATABASE -> routeDatabase(normalized, authorizationHeader);
         };
     }
@@ -182,63 +185,30 @@ public class InventorySystemService {
         );
     }
 
-    private InventorySystemResult routeSpatial(String userInput) {
-        SpatialTools.SpatialResponse response = spatialTools.resolveSpatialResponse(userInput);
-
-        List<Artifact> artifacts = new java.util.ArrayList<>();
-        if (geminiVisualRenderer.includeDeterministic()) {
-            String imageBytes;
-            try {
-                imageBytes = spatialTools.renderHotspotPng(response);
-            } catch (Exception exception) {
-                throw new IllegalStateException("Unable to render spatial output: " + exception.getMessage(), exception);
-            }
-            artifacts.add(new Artifact.Builder()
-                    .artifactId(UUID.randomUUID().toString())
-                    .name("warehouse_hotspot_map_png")
-                    .description("Oracle spatial hotspot visualization")
-                    .parts(new FilePart(new FileWithBytes("image/png", "warehouse-hotspot-map.png", imageBytes)))
-                    .metadata(Map.of(
-                            "productId", response.productId(),
-                            "sourceMode", response.sourceMode(),
-                            "contentType", "image/png",
-                            "renderMode", "deterministic",
-                            "sourceOfTruth", true
-                    ))
-                    .extensions(List.of())
-                    .build());
-        }
-        if (geminiVisualRenderer.includeGemini()) {
-            geminiVisualRenderer.renderSpatial(response).ifPresent(geminiImageBytes ->
-                    artifacts.add(new Artifact.Builder()
-                            .artifactId(UUID.randomUUID().toString())
-                            .name("warehouse_hotspot_map_gemini_png")
-                            .description("Gemini-generated illustrative warehouse hotspot visualization")
-                            .parts(new FilePart(new FileWithBytes(
-                                    "image/png",
-                                    "warehouse-hotspot-map-gemini.png",
-                                    geminiImageBytes
-                            )))
-                            .metadata(Map.of(
-                                    "productId", response.productId(),
-                                    "sourceMode", response.sourceMode(),
-                                    "contentType", "image/png",
-                                    "renderMode", "gemini",
-                                    "sourceOfTruth", false
-                            ))
-                            .extensions(List.of())
-                            .build())
+    private InventorySystemResult routeSpatial(String userInput, String authorizationHeader) {
+        try {
+            OracleSpatialEvidenceService.SpatialEvidence response = oracleSpatialEvidenceService.fetch(
+                    OracleSpatialEvidenceService.skuFromPrompt(userInput)
+            );
+            return new InventorySystemResult(
+                    response.summaryText(),
+                    response.source(),
+                    response.executionMode(),
+                    response.sourceDetail(),
+                    List.of(),
+                    "delegate-oracle-ai-database-agent-spatial"
+            );
+        } catch (Exception exception) {
+            return new InventorySystemResult(
+                    "Oracle AI Database Agent spatial evidence is unavailable. No local or MCP Toolkit spatial fallback was used.\n\n"
+                            + exception.getMessage(),
+                    "oracle-ai-database-agent-error",
+                    "delegate-error",
+                    "Managed Oracle AI Database Agent spatial delegation failed: " + exception.getMessage(),
+                    List.of(),
+                    "delegate-oracle-ai-database-agent-spatial-error"
             );
         }
-
-        return new InventorySystemResult(
-                response.summaryText(),
-                "spatial",
-                response.sourceMode(),
-                response.sourceDetail(),
-                artifacts,
-                "delegate-spatial"
-        );
     }
 
     private static String extractProductId(String userInput) {
