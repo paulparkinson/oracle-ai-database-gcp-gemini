@@ -8,13 +8,24 @@ The Java agent runtime is the implementation used in the live demo. The Python a
 
 [Read the implementation blog](https://paulparkinson.github.io/oracle-ai-database-gcp-gemini/blog.html), including the deployment architecture, database entity model, SQL setup, A2A agents, Gemini Enterprise registration, verification results, and remaining prerequisites.
 
-## Managed-agent catalog and interactive map
+## Managed-agent catalog, interactive map and graph
 
 For the current interactive catalog/map flow, start with
 [Managed Oracle agent + MCP App](docs/MCP_APP_ORACLE_AGENT_SPATIAL.md), including
 dynamic prompts, screenshots, local/cloud setup and a three-level provenance
-check. The existing **Oracle Supply-Chain MCP App** connector has two actions:
-**List-inventory-items** and **Show-inventory-spatial-hotspots**.
+check. The MCP server offers **List-inventory-items**,
+**Show-inventory-spatial-hotspots** and **Show-supply-chain-graph** on the same
+**Oracle Supply-Chain MCP App** connector. After deploying a tool change, reload
+custom actions and enable the new action; existing registrations do not update themselves.
+
+For the interactive **Cytoscape.js** graph, see the
+[graph runbook](docs/MCP_APP_ORACLE_AGENT_GRAPH.md). Ask “Use Show-supply-chain-graph
+for SKU-700.” Pan, zoom, drag nodes, change layouts, and click nodes/edges for
+database IDs and relationships. This action returns structured data, not a
+generated picture. It reads the Oracle graph's backing relationship tables
+through the managed agent; it does not claim `GRAPH_TABLE` execution.
+
+![Cytoscape.js supply-chain graph running in Gemini Enterprise for SKU-700.](docs/images/gemini-cytoscape-sku700.jpg)
 
 Try “Show the spatial hotspot map for SKU-700” or “Show the spatial hotspot map
 for SKU-APAC-210.” List the catalog first to discover other available products.
@@ -188,7 +199,13 @@ object allowlist as the Google profile. See [sql/README.md](./sql/README.md) for
 the controlled installation sequence. A provider profile does not change the
 A2A cards or Gemini Enterprise topology.
 
-The graph and spatial paths are deterministic and image-first by default. Set `VISUAL_RENDERER=both` to keep the deterministic Oracle data image as the source of truth and add a second Gemini-generated illustrative PNG. Set `VISUAL_RENDERER=gemini` only when you deliberately want generated images without the deterministic image artifact. `GEMINI_IMAGE_MODEL` defaults to `gemini-3.1-flash-image`, the current Nano Banana 2 general-purpose image model in the Gemini API; use `gemini-3-pro-image` when you want the premium image model and accept the extra cost/latency. Select AI depends on a database-side `DBMS_CLOUD_AI` profile. The inventory-action coordinator uses Google ADK Java when credentials are available and falls back to deterministic recommendations when the model path is unavailable.
+The maintained MCP read paths are interactive MapLibre and Cytoscape.js apps,
+not image generators. The obsolete spatial Java2D/JTS renderer, seeded spatial
+fallback and its bundled basemap files have been removed. Legacy `/graph` A2A
+image/payload examples remain separate compatibility surfaces; `VISUAL_RENDERER`
+and `GRAPH_DATA_MODE` do not control the new MCP graph action. Do not use those
+legacy examples to demonstrate managed-agent provenance. Select AI and the
+inventory-action coordinator are separate demo surfaces.
 
 ## Documentation Index
 

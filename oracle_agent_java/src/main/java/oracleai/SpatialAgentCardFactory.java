@@ -28,33 +28,23 @@ final class SpatialAgentCardFactory {
 
         return new AgentCard(
                 "oracle_spatial_agent",
-                "Spatial hotspot specialist for Oracle inventory risk workflows. It renders a PNG map from warehouse hotspot data, highlighting the primary pressure point and suggested relief route.",
+                "Managed Oracle AI Database Agent spatial evidence summary. For an interactive map, use Show-inventory-spatial-hotspots in the MCP App. No PNG rendering or local fallback.",
                 spatialUrl,
                 null,
                 "0.0.1",
                 null,
                 new AgentCapabilities(false, false, false, List.of()),
                 List.of("text/plain"),
-                List.of("image/png", "text/plain"),
+                List.of("text/plain"),
                 List.of(
                         new AgentSkill(
                                 "oracle_spatial_agent",
-                                "spatial-hotspot-renderer",
+                                "spatial-hotspot-evidence",
                                 "Specialist in Oracle spatial hotspot visualizations for warehouse and inventory pressure.",
                                 List.of("llm", "spatial"),
                                 List.of(),
                                 List.of("text/plain"),
-                                List.of("image/png", "text/plain"),
-                                null
-                        ),
-                        new AgentSkill(
-                                "oracle_spatial_agent-renderHotspotMap",
-                                "renderHotspotMap",
-                                "Render a PNG hotspot map for a product, using Oracle-backed warehouse risk data when available.",
-                                List.of("llm", "tools", "map"),
-                                List.of(),
                                 List.of("text/plain"),
-                                List.of("image/png"),
                                 null
                         )
                 ),

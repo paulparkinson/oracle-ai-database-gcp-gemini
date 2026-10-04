@@ -57,8 +57,9 @@ revalidation, row locking, audit, and the transaction.
 
 ## Current implementation boundary
 
-The deployed **Oracle Supply-Chain MCP App** connector currently exposes
-`list-inventory-items` and `show-inventory-spatial-hotspots`. Both read through
+The **Oracle Supply-Chain MCP App** server exposes
+`list-inventory-items`, `show-inventory-spatial-hotspots` and
+`show-supply-chain-graph`. All read through
 the Java gateway's server-side OAuth/A2A call to the managed Oracle AI Database
 Agent. The spatial tool accepts a SKU, not Gemini-supplied evidence, and never
 falls back to Toolkit/Select AI/static payloads. Its MapLibre resource displays
@@ -66,8 +67,12 @@ validated warehouse rows from seeded Oracle demo tables. See the
 [read-path runbook](MCP_APP_ORACLE_AGENT_SPATIAL.md) for dynamic prompts,
 screenshots, gateway rationale, and independent verification limits.
 
-The graph descriptors below are extension/reference surfaces, not a third
-enabled action on that connector. The stored Oracle grant identifies the
+The graph action uses bundled Cytoscape.js and a separate `ui://` resource,
+not a PNG. Its fixed query traverses the property graph's backing relational
+tables through the managed agent, not `GRAPH_TABLE` or local JDBC. See the
+[graph runbook](MCP_APP_ORACLE_AGENT_GRAPH.md) for tests, scope and connector
+refresh steps. The toolkit descriptors below remain reference surfaces;
+they do not automatically register this action. The stored Oracle grant identifies the
 gateway's upstream caller; it is not automatic per-Gemini-user delegation.
 
 The Java A2A runtime already returns A2UI v0.8 transfer-review messages. The
@@ -104,8 +109,9 @@ The full-stack toolkit seeds the complementary MCP App descriptors:
 
 1. List the managed catalog, then map SKU-700 and SKU-APAC-210 to demonstrate
    parameterized spatial reads. Inspect point details and schematic connections.
-2. If separately implemented/registered, open the graph MCP App and traverse
-   the supplier → plant → port → warehouse dependency path.
+2. Enable `Show-supply-chain-graph` on the same connector and ask for SKU-700,
+   then SKU-900. Inspect supplier → plant → port → warehouse → product edges
+   and alert → port links. This is dependency evidence, not a transfer approval.
 3. Ask the A2A inventory-action agent what action should be taken.
 4. Review the A2UI recommendation, policy explanation, and proposed transfer.
 5. Approve only after the governed write path is installed and verified; until

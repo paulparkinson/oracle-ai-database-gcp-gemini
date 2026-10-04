@@ -34,7 +34,9 @@ Gemini's surrounding narration is not evidence of any database operation.
 
 Use the existing **Oracle Supply-Chain MCP App** connector, with both
 **List-inventory-items** and **Show-inventory-spatial-hotspots** enabled.
-These are two actions on one connector, not two new connectors. After a tool
+These are two actions on one connector, not two new connectors. The same
+connector now also supports the [Cytoscape graph action](MCP_APP_ORACLE_AGENT_GRAPH.md);
+its runbook includes the updated three-action screenshot. After a tool
 schema change, reload custom actions and start a fresh conversation. No reload,
 deployment, or OAuth consent is normally needed merely to choose another SKU.
 

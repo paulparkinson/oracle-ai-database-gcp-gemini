@@ -23,7 +23,6 @@ public class InventorySystemService {
     private final OracleAiDatabaseAgentClient oracleAiDatabaseAgentClient;
     private final InventoryActionAdkService inventoryActionAdkService;
     private final Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies;
-    private final SpatialTools spatialTools;
     private final OracleSpatialEvidenceService oracleSpatialEvidenceService;
     private final GeminiVisualRenderer geminiVisualRenderer;
 
@@ -33,7 +32,6 @@ public class InventorySystemService {
             OracleAiDatabaseAgentClient oracleAiDatabaseAgentClient,
             InventoryActionAdkService inventoryActionAdkService,
             Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies,
-            SpatialTools spatialTools,
             OracleSpatialEvidenceService oracleSpatialEvidenceService,
             GeminiVisualRenderer geminiVisualRenderer
     ) {
@@ -42,7 +40,6 @@ public class InventorySystemService {
         this.oracleAiDatabaseAgentClient = oracleAiDatabaseAgentClient;
         this.inventoryActionAdkService = inventoryActionAdkService;
         this.getSupplyChainDependencies = getSupplyChainDependencies;
-        this.spatialTools = spatialTools;
         this.oracleSpatialEvidenceService = oracleSpatialEvidenceService;
         this.geminiVisualRenderer = geminiVisualRenderer;
     }

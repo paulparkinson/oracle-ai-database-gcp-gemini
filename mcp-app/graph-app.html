@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Oracle supply-chain graph</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;background:#111;color:#eee}
+body{margin:0;padding:20px}h1{font-size:24px;margin:8px 0}header small{color:#ff745e;font-weight:700}
+p{line-height:1.5}#summary,#provenance{font-size:13px;color:#bbb;overflow-wrap:anywhere}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button,input,select{font:inherit;border:1px solid #666;border-radius:6px;padding:8px;background:#222;color:#fff}
+button{cursor:pointer}button:disabled{opacity:.4;cursor:default}input{flex:1;min-width:160px}
+#graph{height:480px;background:#f5f7fa;border-radius:10px;border:1px solid #555;min-width:0}
+#details{border-left:4px solid #d6533c;padding:12px;background:#222;min-height:40px;white-space:pre-wrap;font-size:14px}
+#legend{font-size:13px;margin:12px 0;color:#ccc}#status{padding:10px;background:#222;border-radius:6px}
+[hidden]{display:none!important}details pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+</style></head><body>
+<header><small>ORACLE AI DATABASE · MANAGED AGENT READ</small><h1 id="title">Supply-chain dependencies</h1></header>
+<p id="status" role="status">Waiting for the MCP tool result.</p>
+<p id="summary"></p><p id="provenance"></p>
+<div class="toolbar">
+<input id="search" aria-label="Find node" placeholder="Find a supplier, port or warehouse">
+<button id="find" disabled>Find</button><button id="fit" disabled>Fit graph</button>
+<button id="zoom-in" disabled aria-label="Zoom in">+</button><button id="zoom-out" disabled aria-label="Zoom out">−</button>
+<select id="layout" aria-label="Graph layout" disabled><option value="breadthfirst">Dependency layout</option><option value="circle">Circle layout</option><option value="cose">Force layout</option></select>
+</div>
+<div id="graph" aria-label="Interactive supply-chain dependency graph" hidden></div>
+<p id="legend">Supplier · Plant · Port · Warehouse · Product · <span style="color:#ff745e">Alert</span> — arrows show returned relationships.</p>
+<div id="details" role="status">Select a node or edge to inspect database identifiers and relationships.</div>
+<details><summary>Requested SQL (not an execution receipt)</summary><pre id="query"></pre></details>
+<p><small>Drag nodes, pan the background, or zoom. Layout changes do not change the database. No transfer is executed.</small></p>
+<script type="module" src="/src/graph-app.ts"></script></body></html>

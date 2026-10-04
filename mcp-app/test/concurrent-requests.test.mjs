@@ -6,7 +6,12 @@ import { test } from "node:test";
 
 test("overlapping spatial requests have independent MCP transports", async () => {
   const requestedSkus = [];
+  const graphRequests = [];
   const upstream = createServer((req, res) => {
+    if (req.url.startsWith("/api/inventory/supply-chain-graph")) {
+      graphRequests.push(req.url);
+      res.writeHead(503); res.end("Upstream unavailable"); return;
+    }
     const sku = new URL(req.url, "http://localhost").searchParams.get("sku");
     requestedSkus.push(sku);
     // Hold the first request open while the second connects.
@@ -58,7 +63,17 @@ test("overlapping spatial requests have independent MCP transports", async () =>
       body: JSON.stringify({jsonrpc: "2.0", id: 3, method: "tools/list", params: {}})
     }).then(r => r.json());
     assert.deepEqual(listed.result.tools.map(t => t.name).sort(),
-      ["list-inventory-items", "show-inventory-spatial-hotspots"]);
+      ["list-inventory-items", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
+    const failed = await fetch(endpoint, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({jsonrpc: "2.0", id: 4, method: "tools/call", params: {
+        name: "show-supply-chain-graph", arguments: {sku: "SKU-700", oracleAgentEvidence: {nodes: [{id: "invented"}]}}
+      }})
+    }).then(r => r.json());
+    assert.equal(failed.result.isError, true);
+    assert.equal(failed.result.structuredContent, undefined);
+    assert.deepEqual(graphRequests, ["/api/inventory/supply-chain-graph?sku=SKU-700"]);
+    assert.equal(requestedSkus.length, 2, "No alternate upstream endpoint called after graph failure");
   } finally {
     child.kill();
     await once(child, "exit");

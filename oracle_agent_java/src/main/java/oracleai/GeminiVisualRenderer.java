@@ -71,10 +71,6 @@ public class GeminiVisualRenderer {
         return renderImage(graphPrompt(response));
     }
 
-    public Optional<String> renderSpatial(SpatialTools.SpatialResponse response) {
-        return renderImage(spatialPrompt(response));
-    }
-
     private Optional<String> renderImage(String prompt) {
         String apiKey = firstNonBlank(
                 environment.getProperty("GEMINI_API_KEY"),
@@ -167,27 +163,6 @@ public class GeminiVisualRenderer {
                 response.sourceDetail(),
                 response.nodes(),
                 response.edges()
-        );
-    }
-
-    private static String spatialPrompt(SpatialTools.SpatialResponse response) {
-        return """
-                Create a polished executive warehouse hotspot map as a PNG.
-                Use the structured data exactly as the source of truth. Do not invent warehouses, product IDs, risk levels,
-                regions, coordinates, or metrics. Show the hotspot region, ranked warehouse markers, and transfer pressure.
-                Include a small caption that says "Illustrative Gemini rendering; deterministic Oracle Spatial image is the source of truth."
-
-                Product ID: %s
-                Summary: %s
-                Source mode: %s
-                Source detail: %s
-                Hotspots: %s
-                """.formatted(
-                response.productId(),
-                response.summaryText(),
-                response.sourceMode(),
-                response.sourceDetail(),
-                response.hotspots()
         );
     }
 

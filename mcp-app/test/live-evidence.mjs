@@ -17,7 +17,7 @@ async function rpc(method, params) {
 }
 const listed = await rpc("tools/list", {});
 assert.deepEqual(listed.tools.map(t => t.name).sort(),
-  ["list-inventory-items", "show-inventory-spatial-hotspots"]);
+  ["list-inventory-items", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
 const catalog = (await rpc("tools/call", { name: "list-inventory-items", arguments: {} })).structuredContent;
 assert.equal(catalog.source, "oracle-ai-database-agent");
 assert.equal(catalog.scope, "FINANCIAL.SC_PRODUCTS");

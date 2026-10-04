@@ -14,24 +14,30 @@ Today, the same Java process serves five agent surfaces:
 
 The legacy root `/` graph surface still exists for backward compatibility, but `/graph` is now the canonical graph route.
 
-The graph renderer still uses deterministic application logic plus custom Java2D image generation. The spatial agent now uses JTS for geometry work and Java2D for the rendered PNG. You can also set `VISUAL_RENDERER=both` to return the deterministic PNG plus a second Gemini-generated illustrative PNG. The inventory-system gateway keeps graph and spatial routing local, while delegating general inventory and SQL-style questions to the Oracle-hosted Oracle AI Database Agent. Local Select AI fallback is disabled by default and should only be enabled deliberately for an offline demo path. The action agent uses Google ADK Java when credentials are available and falls back cleanly when they are not.
+The maintained MCP graph uses **Cytoscape.js**, and the map uses **MapLibre**.
+Both obtain rows through the managed Oracle AI Database Agent. The obsolete
+spatial Java2D/JTS renderer, its seeded fallback and bundled basemap files have
+been removed. The legacy `/graph` A2A image/payload renderer is retained for
+compatibility, but is **not called by the MCP graph action**. The legacy graph
+configuration/examples below do not apply to the managed MCP read path.
 
 ## Related Files
 
 ### Java gateway for the managed-agent MCP read path
 
 The same Java codebase also supplies the Cloud Run gateway used by the
-catalog/MapLibre MCP App. This is distinct from the `/spatial` Java2D image
-surface above:
+catalog/MapLibre/Cytoscape MCP Apps. The `/spatial` A2A adapter now returns a
+managed-agent text summary and points users to the MCP map, not a PNG:
 
 ```text
 Gemini Enterprise → MCP App server → Java gateway
   → OAuth token exchange/cache → managed Oracle AI Database Agent via A2A
-    → validated spatial JSON → MapLibre MCP App
+    → validated rows → MapLibre map / Cytoscape.js graph MCP App
 ```
 
 `GET /api/inventory/catalog` and
-`GET /api/inventory/spatial-hotspots?sku=SKU-700` ask the managed agent to query
+`GET /api/inventory/spatial-hotspots?sku=SKU-700` and
+`GET /api/inventory/supply-chain-graph?sku=SKU-700` ask the managed agent to query
 the configured Oracle schema. This path rejects model-passed evidence and has
 no local Select AI/Toolkit/static-data fallback. The gateway keeps client
 secrets and refresh grants server-side, renews/caches access tokens, and
@@ -44,6 +50,10 @@ authorization before production. See the
 [managed read runbook](../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md) for exact setup,
 why this boundary exists, renewal limits, dynamic examples, and the distinction
 between an authenticated A2A call and independent Oracle SQL audit proof.
+The [graph runbook](../docs/MCP_APP_ORACLE_AGENT_GRAPH.md) explains the explicit
+SC_* relational traversal (not GRAPH_TABLE), typed-node validation, bounded
+results, dynamic examples and browser tests. Failed queries return HTTP 502;
+invalid SKU syntax returns 400; an empty scoped result returns NO_DATA.
 
 ### Other runtime references
 
@@ -80,7 +90,7 @@ between an authenticated A2A call and independent Oracle SQL audit proof.
    ./test.sh
    ```
 
-4. **Optionally add Gemini-generated visuals:**
+4. **Legacy `/graph` A2A image mode only (not the MCP graph/map):**
    ```bash
    export VISUAL_RENDERER=both
    export GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
@@ -269,7 +279,7 @@ This coordinator is the first cut of the final-stage action flow described in th
 Current tool coverage inside the coordinator:
 
 - `getGraphEvidence`: calls the Oracle graph tool directly and summarizes the dependency path
-- `getSpatialEvidence`: calls the in-process spatial tool and returns a hotspot summary plus a suggested transfer direction
+- `getSpatialEvidence`: calls the managed-agent spatial service and returns validated warehouse rows; it does not invent a transfer quantity
 - `getExternalSignals`: returns seeded weather or lane-risk context
 - `checkTransferPolicy`: decides whether approval is required
 - `draftInventoryTransferAction`: creates a draft, not an execution
@@ -284,11 +294,10 @@ The same Java process now also serves a dedicated spatial hotspot agent at:
 
 What it does today:
 
-- looks up hotspot rows from `sc_inventory_risk_summary`, `sc_warehouse_risk_snapshot`, and `sc_warehouse_geo` when those tables are present
-- falls back to seeded hotspot data for `SKU-500`, `SKU-700`, and `SKU-900` when the tables are not yet available
-- uses JTS Topology Suite for geometry work such as envelopes, hulls, and route lines
-- overlays bundled GeoJSON basemap layers for US state boundaries, major rivers, and lakes so the map reads more like a real regional view
-- renders the final `image/png` artifact with Java2D so the output stays self-contained in the existing JVM
+- calls the managed Oracle AI Database Agent through the shared spatial service
+- validates rows from the scoped inventory-risk view and returns a text summary
+- does not substitute seeded rows on failure or generate a picture
+- directs interactive visualization to `Show-inventory-spatial-hotspots`
 
 Recommended Gemini Enterprise prompt:
 
@@ -298,9 +307,8 @@ Show that on a map for SKU-500 and highlight the warehouse hotspots plus the bes
 
 Expected response shape:
 
-- PNG artifact named `warehouse-hotspot-map.png`
-- text summary identifying the main hotspot warehouse and the likely relief source
-- metadata showing `sourceMode=database` or `sourceMode=seeded`
+- managed-agent text summary or explicit failure/no-data result
+- MapLibre interaction is available through the MCP App, not an A2A PNG artifact
 
 ## Select AI Agent
 

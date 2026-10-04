@@ -12,14 +12,14 @@ import org.springframework.stereotype.Component;
 public class InventoryActionTools {
 
     private final Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies;
-    private final SpatialTools spatialTools;
+    private final OracleSpatialEvidenceService spatialEvidence;
 
     public InventoryActionTools(
             Function<GraphTools.GraphRequest, GraphTools.GraphResponse> getSupplyChainDependencies,
-            SpatialTools spatialTools
+            OracleSpatialEvidenceService spatialEvidence
     ) {
         this.getSupplyChainDependencies = getSupplyChainDependencies;
-        this.spatialTools = spatialTools;
+        this.spatialEvidence = spatialEvidence;
     }
 
     @Schema(
@@ -61,14 +61,25 @@ public class InventoryActionTools {
 
     @Schema(
             name = "getSpatialEvidence",
-            description = "Return a seeded hotspot summary for a product, including suggested source and destination warehouses for a balancing move."
+            description = "Read validated warehouse hotspots through the managed Oracle AI Database Agent. Roles are evidence, not a transfer quantity or approval. No static fallback."
     )
     public Map<String, Object> getSpatialEvidence(
             @Schema(name = "productId", description = "The product identifier from the inventory-risk dataset.", optional = false)
             String productId
     ) {
         String normalizedProductId = normalizeProductId(productId);
-        return spatialTools.spatialEvidenceFor(normalizedProductId);
+        try {
+            var evidence = spatialEvidence.fetch(normalizedProductId);
+            Map<String, Object> result = new LinkedHashMap<>(OracleSpatialEvidenceController.toResponse(evidence));
+            result.put("hotspotSummary", evidence.summaryText());
+            result.put("productId", evidence.sku());
+            // Do not invent source/destination choices or quantities from a map.
+            result.put("transferAuthority", "Spatial roles do not authorize or size an inventory transfer.");
+            return result;
+        } catch (Exception exception) {
+            return Map.of("status", "unavailable", "productId", normalizedProductId,
+                    "message", "Managed Oracle spatial evidence unavailable; no fallback or transfer recommendation.");
+        }
     }
 
     @Schema(

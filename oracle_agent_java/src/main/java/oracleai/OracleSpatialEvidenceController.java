@@ -15,9 +15,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class OracleSpatialEvidenceController {
 
     private final OracleSpatialEvidenceService spatialEvidenceService;
+    private final OracleGraphEvidenceService graphEvidenceService;
 
-    public OracleSpatialEvidenceController(OracleSpatialEvidenceService spatialEvidenceService) {
+    public OracleSpatialEvidenceController(OracleSpatialEvidenceService spatialEvidenceService,
+            OracleGraphEvidenceService graphEvidenceService) {
         this.spatialEvidenceService = spatialEvidenceService;
+        this.graphEvidenceService = graphEvidenceService;
+    }
+
+    @GetMapping(path = "/supply-chain-graph", produces = MediaType.APPLICATION_JSON_VALUE)
+    public OracleGraphEvidenceService.GraphEvidence graph(@RequestParam(name = "sku") String sku) throws Exception {
+        return graphEvidenceService.fetch(sku);
     }
 
     @GetMapping(path = "/spatial-hotspots", produces = MediaType.APPLICATION_JSON_VALUE)

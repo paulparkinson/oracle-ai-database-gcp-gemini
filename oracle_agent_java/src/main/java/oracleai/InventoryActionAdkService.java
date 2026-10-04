@@ -176,7 +176,13 @@ public class InventoryActionAdkService {
 
         String sourceWarehouse = stringValue(spatialEvidence.get("recommendedSourceWarehouse"));
         String destinationWarehouse = stringValue(spatialEvidence.get("recommendedDestinationWarehouse"));
-        int units = intValue(spatialEvidence.get("suggestedTransferUnits"), 250);
+        int units = intValue(spatialEvidence.get("suggestedTransferUnits"), 0);
+        if (units <= 0 || sourceWarehouse.isBlank() || destinationWarehouse.isBlank()) {
+            return new InventoryActionResult(
+                    "No transfer was drafted: managed spatial evidence does not provide an approved "
+                            + "source, destination and transfer quantity. Use the governed recommendation/review workflow.",
+                    List.of("spatialEvidence=" + spatialEvidence), "insufficient-transfer-evidence");
+        }
 
         String activeAlert = stringValue(graphEvidence.get("activeAlert"));
         String signalSummary = stringValue(externalSignals.get("signalSummary"));

@@ -1,13 +1,14 @@
 # Oracle Supply-Chain MCP App: managed-agent reads
 
-This is the maintained MCP server and MapLibre UI in
+This is the maintained MCP server, MapLibre map and Cytoscape.js graph in
 `oracle-ai-database-gcp-gemini`. The existing Gemini Enterprise **Oracle
-Supply-Chain MCP App** connector exposes two read-only actions:
+Supply-Chain MCP App** connector can expose three read-only actions:
 
 | Gemini action / MCP tool | Input | Result |
 | --- | --- | --- |
 | List-inventory-items / `list-inventory-items` | None | Managed-agent catalog, product IDs/names, scope and A2A task ID. |
 | Show-inventory-spatial-hotspots / `show-inventory-spatial-hotspots` | `sku`; optional `maximumRows` (2–50, default 20) | Validated warehouse rows, provenance fields, GeoJSON and `ui://oracle-supply-chain/spatial-hotspots-v6`. |
+| Show-supply-chain-graph / `show-supply-chain-graph` | `sku` only | Managed-agent dependency rows transformed to typed nodes/edges and `ui://oracle-supply-chain/supply-chain-graph-v1`. |
 
 ```text
 Gemini Enterprise → MCP server → Java gateway
@@ -24,7 +25,7 @@ read live, not production inventory telemetry.
 
 ## Try it
 
-Enable both actions on the same connector. Reload custom actions only after
+Enable all three actions on the same connector. Reload custom actions only after
 tool/schema changes, then start a fresh chat. Try:
 
 - “List the product IDs and names in the managed Oracle inventory catalog.”
@@ -32,6 +33,13 @@ tool/schema changes, then start a fresh chat. Try:
 - “Show the spatial hotspot map for SKU-APAC-210.”
 - “Map SKU-900 and summarize only the returned warehouse roles and scores.”
 - “Show the spatial hotspot map for SKU-501. If no rows are returned, say risk is unknown.”
+- “Use Show-supply-chain-graph for SKU-700.”
+- “Show the supply-chain dependency graph for SKU-900 and describe only its returned relationships.”
+
+The [graph runbook](../docs/MCP_APP_ORACLE_AGENT_GRAPH.md) covers the exact query
+scope, interactive checks and screenshots. The graph reads relationship tables
+through the managed agent, not `GRAPH_TABLE`, Toolkit or direct JDBC. Cytoscape
+is bundled: no CDN, tile provider, generated image or browser OAuth is involved.
 
 ![Verified SKU-700 map with source, destination and satellite warehouses.](../docs/images/managed-agent-sku700-v6.jpg)
 
@@ -86,7 +94,7 @@ comparison. The returned `query` is requested SQL, not an execution receipt.
   them. OAuth secrets remain in the Java service, never in iframe arguments.
 - Map tiles are separate OpenStreetMap requests. Their origins must be
   permitted by the resource CSP/network policy; tile success is not data proof.
-- `MCP_WRITES_ENABLED=false` advertises only catalog and spatial tools. Legacy
+- `MCP_WRITES_ENABLED=false` advertises only catalog, spatial and graph tools. Legacy
   transfer-dashboard/write code is not the current read-only connector flow.
 - Transfer review belongs to A2A/A2UI and governed Toolkit operations. The
   current Java A2UI implementation is draft/review, not a verified committed

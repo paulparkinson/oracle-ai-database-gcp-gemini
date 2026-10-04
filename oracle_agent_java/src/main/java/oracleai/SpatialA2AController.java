@@ -11,8 +11,6 @@ import io.a2a.server.tasks.PushNotificationSender;
 import io.a2a.server.tasks.TaskStore;
 import io.a2a.server.tasks.TaskUpdater;
 import io.a2a.spec.AgentCard;
-import io.a2a.spec.FilePart;
-import io.a2a.spec.FileWithBytes;
 import io.a2a.spec.JSONRPCError;
 import io.a2a.spec.SendMessageRequest;
 import io.a2a.spec.SendMessageResponse;
@@ -44,9 +42,7 @@ public class SpatialA2AController {
 
     public SpatialA2AController(
             Environment environment,
-            SpatialTools spatialTools,
             OracleSpatialEvidenceService oracleSpatialEvidenceService,
-            GeminiVisualRenderer geminiVisualRenderer,
             TaskStore taskStore,
             QueueManager queueManager,
             PushNotificationConfigStore pushNotificationConfigStore,

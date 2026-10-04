@@ -10,11 +10,13 @@ import {
   RESOURCE_MIME_TYPE
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
+import { GraphEvidence } from "./src/graph-contract.js";
 
 const resourceUri = "ui://oracle-supply-chain/inventory-exchange-v2";
 // Bump the resource URI when the embedded bundle changes so Gemini Enterprise
 // does not reuse a cached MCP App document from the previous revision.
 const spatialResourceUri = "ui://oracle-supply-chain/spatial-hotspots-v6";
+const graphResourceUri = "ui://oracle-supply-chain/supply-chain-graph-v1";
 // Keep the previous URI alive so hosts that cached v2 receive the corrected
 // bundle instead of the old OpenStreetMap/CSP configuration.
 const legacySpatialResourceUri = "ui://oracle-supply-chain/spatial-hotspots-v2";
@@ -264,6 +266,29 @@ server.registerTool("list-inventory-items", {
   }).parse(await response.json());
   return { content: [{ type: "text", text: catalog.interpretation }], structuredContent: catalog };
 });
+
+registerAppTool(server, "show-supply-chain-graph", {
+  title: "Show supply-chain dependency graph",
+  description: "Queries the managed Oracle AI Database Agent server-side for active supply-chain paths and attached alerts from the SC_* relationship tables, then opens an interactive Cytoscape.js MCP App. This is relational traversal of graph backing tables, not GRAPH_TABLE execution. Pass only a SKU; never nodes, edges or evidence. No image generation, Toolkit, direct JDBC, model-payload or static fallback. NO_DATA means no complete paths returned, not absence or safety. Use list-inventory-items for catalog discovery.",
+  inputSchema: { sku: z.string().min(1).max(40).describe("Product SKU to query") },
+  _meta: { ui: { resourceUri: graphResourceUri, visibility: ["model", "app"] } },
+  annotations: { readOnlyHint: true, openWorldHint: false }
+}, async ({ sku }) => {
+  const endpoint = new URL("/api/inventory/supply-chain-graph", oracleSpatialEvidenceUrl);
+  endpoint.searchParams.set("sku", sku);
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(agentServiceTimeoutMs) });
+  if (!response.ok) throw new Error("Managed Oracle graph evidence unavailable or invalid. Cause unknown; no fallback.");
+  const graph = GraphEvidence.parse(await response.json());
+  if (graph.sku !== sku.trim().toUpperCase()) throw new Error("Graph SKU mismatch; no graph rendered.");
+  return { content: [{ type: "text", text: graph.interpretation + ` A2A task: ${graph.taskId}.` }],
+    structuredContent: { ...graph, view: "supply-chain-graph" } };
+});
+
+registerAppResource(server, graphResourceUri, graphResourceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
+  contents: [{ uri: graphResourceUri, mimeType: RESOURCE_MIME_TYPE,
+    text: await readFile(path.join(import.meta.dirname, "dist", "graph-app.html"), "utf8"),
+    _meta: { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } } }]
+}));
 
 registerAppTool(server, "show-inventory-spatial-hotspots", {
   title: "Show inventory spatial hotspots",

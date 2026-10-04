@@ -1,6 +1,6 @@
 ---
 name: inventory-ui-architecture
-description: Use, verify, troubleshoot or extend the Oracle inventory demo's managed-agent catalog/spatial MCP App and A2A/A2UI decision lane, including dynamic SKU prompts, provenance checks, Java gateway OAuth boundaries and workshop documentation.
+description: Use, verify, troubleshoot or extend the Oracle inventory demo's managed-agent catalog, MapLibre spatial and Cytoscape.js graph MCP Apps and A2A/A2UI decision lane, including dynamic SKU prompts, provenance checks, Java gateway OAuth boundaries and workshop documentation.
 metadata:
   short-description: Maintain the inventory MCP App and A2UI architecture
 ---
@@ -20,14 +20,16 @@ changes in `oracle-ai-for-sustainable-dev`.
 Read the [managed read runbook](../../../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md)
 for use, OAuth, provenance or spatial work; read the
 [two-lane architecture](../../../docs/INVENTORY_UI_ARCHITECTURE.md) for transfer
-or UI-protocol changes. Inspect only the implementation relevant to the task.
+or UI-protocol changes. For graph work also read the
+[graph runbook](../../../docs/MCP_APP_ORACLE_AGENT_GRAPH.md).
+Inspect only the implementation relevant to the task.
 
 Maintain two explicit lanes:
 
 - **Explore:** MCP Apps for interactive, primarily read-only graph and spatial
-  experiences. The current connector exposes `list-inventory-items` and
-  `show-inventory-spatial-hotspots`; graph descriptors are extension examples,
-  not a third deployed action.
+  experiences. The server exposes `list-inventory-items`,
+  `show-inventory-spatial-hotspots` and `show-supply-chain-graph`. Reload and
+  enable new connector actions after deployment; verify registration separately.
 - **Decide and act:** A2A inventory-action coordinator returning A2UI for
   evidence, policy, transfer draft, and approval controls.
 
@@ -38,15 +40,15 @@ then emits the declarative UI.
 
 ## Safety and truthfulness
 
-For catalog/spatial reads, preserve this path:
+For catalog/spatial/graph reads, preserve this path:
 
 ```text
 Gemini Enterprise → MCP App server → Java gateway
   → OAuth exchange/cache → managed Oracle AI Database Agent via A2A
-    → validated spatial JSON → MapLibre MCP App
+    → validated rows → MapLibre map / Cytoscape.js graph MCP App
 ```
 
-Never accept model-passed spatial evidence or substitute Toolkit, Select AI,
+Never accept host-model-passed spatial/graph evidence or substitute Toolkit, local Select AI,
 Google Search, hardcoded rows or mock results after a failure. Do not “repair”
 provenance by changing a source string. Keep client secrets and refresh grants
 server-side. Initial browser consent is legitimate; it is not required for
@@ -61,6 +63,12 @@ risk unknown in this view, not safety or absence from every table. Preserve
 per-row product/warehouse IDs; hotspot scores are 0–1, not probabilities.
 Connections are schematic, not optimized routes or transfer recommendations.
 Pan/zoom/click inspects a result; a new tool call is needed to query again.
+Graph reads traverse the property graph's backing SC_* relationship tables
+through managed-agent SQL; do not claim GRAPH_TABLE execution. Nodes and edges
+must preserve database identity, product scope and typed relationships. The
+graph action never invokes the legacy A2A PNG/payload renderer. Do not infer
+missing links, fabricate alerts or equate catalog membership with a complete
+dependency path. A NO_DATA graph is unknown, not evidence of safety.
 
 For provenance, distinguish host tool trace, authenticated server/A2A call,
 and independent Oracle-side query/audit evidence. `Load Skill`, Google Search,
