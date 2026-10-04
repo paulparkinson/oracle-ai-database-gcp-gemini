@@ -205,3 +205,16 @@ These are observed results, not hardcoded production responses. The live
 regression script assumes this demo catalog; update its expectations if seed
 data changes. The earlier three-hotspot count alone was insufficient validation;
 v6 checks each row's product identity and preserves warehouse IDs.
+
+Gemini Enterprise was also tested in a fresh conversation after reloading the
+existing connector's actions. SKU-700 rendered the three warehouses, correct
+role colors and DFW–Chicago schematic connection; clicking DFW showed score
+0.36. That host run returned task `ff3a3bd1-a5ac-493d-b9f0-3465fc54f92e`.
+The simple follow-up “Show the spatial hotspot map for SKU-501” returned
+NO_DATA and UNKNOWN risk, with no empty map or Toolkit fallback
+(task `e3604580-e52d-4cf1-bd2a-7ce6702e6435`).
+
+The host still used “no spatial profile exists” in a next-step sentence.
+That wording goes beyond “no rows returned from this view”; the tool and UI
+retain the narrower statement. Do not treat host-generated explanations or
+suggested follow-ups as additional database evidence.
