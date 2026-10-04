@@ -18,6 +18,35 @@ The graph renderer still uses deterministic application logic plus custom Java2D
 
 ## Related Files
 
+### Java gateway for the managed-agent MCP read path
+
+The same Java codebase also supplies the Cloud Run gateway used by the
+catalog/MapLibre MCP App. This is distinct from the `/spatial` Java2D image
+surface above:
+
+```text
+Gemini Enterprise → MCP App server → Java gateway
+  → OAuth token exchange/cache → managed Oracle AI Database Agent via A2A
+    → validated spatial JSON → MapLibre MCP App
+```
+
+`GET /api/inventory/catalog` and
+`GET /api/inventory/spatial-hotspots?sku=SKU-700` ask the managed agent to query
+the configured Oracle schema. This path rejects model-passed evidence and has
+no local Select AI/Toolkit/static-data fallback. The gateway keeps client
+secrets and refresh grants server-side, renews/caches access tokens, and
+centralizes row validation. Initial browser consent is still needed; map
+requests do not normally require repeated consent.
+
+This deployment uses its stored grant's identity, not automatically the
+identity of every Gemini user. The demo gateway's public ingress needs caller
+authorization before production. See the
+[managed read runbook](../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md) for exact setup,
+why this boundary exists, renewal limits, dynamic examples, and the distinction
+between an authenticated A2A call and independent Oracle SQL audit proof.
+
+### Other runtime references
+
 - [`../sql/setup_supply_chain_graph_schema.sql`](../sql/setup_supply_chain_graph_schema.sql): shared idempotent setup DDL for creating the graph demo tables and property graph in Oracle Database.
 - [`../sql/seed_supply_chain_graph_data.sql`](../sql/seed_supply_chain_graph_data.sql): shared idempotent sample data seed for three supply-chain paths, including `SKU-500`.
 - [`../sql/setup_inventory_risk_demo_schema.sql`](../sql/setup_inventory_risk_demo_schema.sql): shared idempotent setup DDL for the inventory-risk summary, warehouse-geo, and hotspot tables used by the spatial and Select AI flows.

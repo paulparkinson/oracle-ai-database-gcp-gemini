@@ -12,6 +12,11 @@ Start with README.md and the runbook for the component you are changing.
 
 ## Included skills
 
+For inventory MCP Apps/A2UI usage, provenance checks, implementation or workshop
+updates, read `.agents/skills/inventory-ui-architecture/SKILL.md` and its linked
+runbook. It preserves the managed-agent read boundary and draft-only transfer
+status. This is user-facing development guidance, not a database-query tool.
+
 The repository includes the complete `video-blog-walkthrough` skill package:
 `skills/video-blog-walkthrough/SKILL.md`, its agent metadata, and its audit script.
 It is also discoverable through `.agents/skills/video-blog-walkthrough`.

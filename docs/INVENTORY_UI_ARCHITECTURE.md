@@ -57,6 +57,19 @@ revalidation, row locking, audit, and the transaction.
 
 ## Current implementation boundary
 
+The deployed **Oracle Supply-Chain MCP App** connector currently exposes
+`list-inventory-items` and `show-inventory-spatial-hotspots`. Both read through
+the Java gateway's server-side OAuth/A2A call to the managed Oracle AI Database
+Agent. The spatial tool accepts a SKU, not Gemini-supplied evidence, and never
+falls back to Toolkit/Select AI/static payloads. Its MapLibre resource displays
+validated warehouse rows from seeded Oracle demo tables. See the
+[read-path runbook](MCP_APP_ORACLE_AGENT_SPATIAL.md) for dynamic prompts,
+screenshots, gateway rationale, and independent verification limits.
+
+The graph descriptors below are extension/reference surfaces, not a third
+enabled action on that connector. The stored Oracle grant identifies the
+gateway's upstream caller; it is not automatic per-Gemini-user delegation.
+
 The Java A2A runtime already returns A2UI v0.8 transfer-review messages. The
 current implementation creates a draft and exposes request-approval/cancel
 intents; it does not yet execute an inventory transfer in Oracle. Do not call
@@ -89,10 +102,10 @@ The full-stack toolkit seeds the complementary MCP App descriptors:
 
 ## Suggested demo sequence
 
-1. Open the spatial MCP App and show the SKU-500 warehouse hotspot and relief
-   route.
-2. Open the graph MCP App and traverse the supplier → plant → port → warehouse
-   dependency path.
+1. List the managed catalog, then map SKU-700 and SKU-APAC-210 to demonstrate
+   parameterized spatial reads. Inspect point details and schematic connections.
+2. If separately implemented/registered, open the graph MCP App and traverse
+   the supplier → plant → port → warehouse dependency path.
 3. Ask the A2A inventory-action agent what action should be taken.
 4. Review the A2UI recommendation, policy explanation, and proposed transfer.
 5. Approve only after the governed write path is installed and verified; until
@@ -101,5 +114,5 @@ The full-stack toolkit seeds the complementary MCP App descriptors:
 Related implementation and workshop material:
 
 - [`oracle_agent_java/README.md`](../oracle_agent_java/README.md)
-- [`a2ui-mcpapps/a2ui-mcpapps.md`](https://github.com/paulparkinson/multicloud-gcpagenticai-oracledb/blob/main/a2ui-mcpapps/a2ui-mcpapps.md)
+- [`a2ui-mcpapps/a2ui-mcpapps.md`](https://github.com/paulparkinson/developer/blob/main/multicloud-gcpagenticai-oracledb/a2ui-mcpapps/a2ui-mcpapps.md)
 - [`oracle-ai-database-fullstack-toolkit`](https://github.com/paulparkinson/oracle-ai-database-fullstack-toolkit)

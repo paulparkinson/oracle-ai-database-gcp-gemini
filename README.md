@@ -8,7 +8,42 @@ The Java agent runtime is the implementation used in the live demo. The Python a
 
 [Read the implementation blog](https://paulparkinson.github.io/oracle-ai-database-gcp-gemini/blog.html), including the deployment architecture, database entity model, SQL setup, A2A agents, Gemini Enterprise registration, verification results, and remaining prerequisites.
 
-## Watch The Demo
+## Managed-agent catalog and interactive map
+
+For the current interactive catalog/map flow, start with
+[Managed Oracle agent + MCP App](docs/MCP_APP_ORACLE_AGENT_SPATIAL.md), including
+dynamic prompts, screenshots, local/cloud setup and a three-level provenance
+check. The existing **Oracle Supply-Chain MCP App** connector has two actions:
+**List-inventory-items** and **Show-inventory-spatial-hotspots**.
+
+Try “Show the spatial hotspot map for SKU-700” or “Show the spatial hotspot map
+for SKU-APAC-210.” List the catalog first to discover other available products.
+SKU-501 demonstrates `NO_DATA`/unknown risk in this demo, not zero risk.
+
+```text
+Gemini Enterprise → MCP App server → Java gateway
+  → OAuth token exchange/cache → Oracle AI Database Agent via A2A
+    → validated spatial JSON → MapLibre MCP App
+```
+
+These are live reads of seeded Oracle demo tables. This path accepts no
+model-supplied evidence and has no Toolkit, Google Search or static-data
+fallback. The [gateway rationale and verification guide](docs/MCP_APP_ORACLE_AGENT_SPATIAL.md)
+explain server-side credentials, the stored-grant identity, and why a source
+label/task ID alone is not independent SQL execution proof. Transfers remain
+the separate A2A/A2UI + Toolkit lane; the current Java A2UI flow is draft/review.
+
+![Live SKU-700 MapLibre MCP App in Gemini Enterprise, with source, destination and satellite warehouses.](docs/images/managed-agent-sku700-v6.jpg)
+
+For ChatGPT/Claude-assisted use or maintenance, ask it to read
+[the user-facing inventory skill](.agents/skills/inventory-ui-architecture/SKILL.md)
+and the linked runbook first. In a Codex environment that discovers this skill,
+invoke `$inventory-ui-architecture`. The step-by-step
+[workshop lab](https://github.com/paulparkinson/developer/blob/main/multicloud-gcpagenticai-oracledb/a2ui-mcpapps/a2ui-mcpapps.md)
+covers both lanes. Application changes belong in **this repository**, not
+`oracle-ai-for-sustainable-dev`.
+
+## Watch the recorded presentation
 
 [![Oracle AI Database Agent in Gemini Enterprise demo](https://img.youtube.com/vi/lU8UAwmBMeQ/hqdefault.jpg)](https://www.youtube.com/watch?v=lU8UAwmBMeQ)
 
@@ -30,7 +65,8 @@ This repo is set up for multiple A2A-style agents. The common pattern is:
 4. The tool returns structured data, text, or generated image artifacts.
 5. The agent returns a final A2A response to Gemini Enterprise.
 
-The current demo flow is:
+The broader multi-agent presentation flow is (separate from the bounded MCP
+read path above):
 
 1. Gemini Enterprise calls the Marketplace-delivered Oracle AI Database Agent to ask which products are at risk of stockouts.
 2. The managed agent invokes the in-database `ORACLE_AI_DATABASE_AGENT` team and its narrow Select AI profile to identify risk drivers by product, warehouse, county, and region under the signed-in database user's identity.
@@ -97,10 +133,10 @@ Use `oracle_select_ai_agent` only as an explicitly identified fallback or
 comparison. It should not replace the managed Marketplace agent in the primary
 demo.
 
-Spatial:
+Spatial MCP App (schematic connection, not route optimization):
 
 ```text
-Show that on a map for a product and highlight the warehouse hotspots plus the best relief route.
+Show the spatial hotspot map for SKU-700 and explain the returned warehouse roles and hotspot scores.
 ```
 
 Graph:

@@ -1,4 +1,4 @@
 interface:
-  display_name: Inventory UI Architecture
-  short_description: Maintain MCP App exploration and A2UI action workflows
-  default_prompt: Design or update the inventory demo's MCP App and A2UI lanes, keeping agent orchestration, UI rendering, approval, and database writes correctly separated.
+  display_name: "Inventory UI Architecture"
+  short_description: "Verify managed Oracle reads and maintain inventory UI lanes"
+  default_prompt: "Use $inventory-ui-architecture to use, verify or update the managed Oracle catalog/spatial MCP App and A2UI lane, preserving provenance, server-side OAuth and approval/write boundaries."

@@ -1,148 +1,104 @@
-# Supply-chain inventory-transfer MCP App
+# Oracle Supply-Chain MCP App: managed-agent reads
 
-This dashboard is a separate MCP App that uses the running Java service as its
-governed-data and approval adapter. The Java service invokes
-`find-stockout-transfer-recommendations` through the Oracle Database MCP Java
-Toolkit, binds a short-lived approval handle to the exact returned rows, and
-returns Toolkit-labeled data. The sandboxed
-`ui://oracle-supply-chain/inventory-exchange-v2` resource receives the rows and
-the widget-only handle through the MCP Apps host bridge. It never receives
-database credentials or connects directly to Oracle Database.
+This is the maintained MCP server and MapLibre UI in
+`oracle-ai-database-gcp-gemini`. The existing Gemini Enterprise **Oracle
+Supply-Chain MCP App** connector exposes two read-only actions:
 
-The MCP server exposes:
-
-- `show-inventory-transfer-dashboard` to the model and app; it is read-only.
-- `approve-inventory-transfer` only to the app; it executes one exact reviewed
-  recommendation.
-- `reject-inventory-transfer-review` only to the app; it invalidates the
-  handle without a write.
-
-The model cannot call the approve or reject tools. The person must select a
-card, inspect the route and quantity, review the notes, and click the explicit
-approval button inside the MCP App.
-
-## Gemini Enterprise spatial read handoff
-
-The required Gemini Enterprise read path is:
+| Gemini action / MCP tool | Input | Result |
+| --- | --- | --- |
+| List-inventory-items / `list-inventory-items` | None | Managed-agent catalog, product IDs/names, scope and A2A task ID. |
+| Show-inventory-spatial-hotspots / `show-inventory-spatial-hotspots` | `sku`; optional `maximumRows` (2–50, default 20) | Validated warehouse rows, provenance fields, GeoJSON and `ui://oracle-supply-chain/spatial-hotspots-v6`. |
 
 ```text
-Gemini Enterprise → MCP App tool → Java gateway → private Oracle A2A relay →
-managed Oracle AI Database Agent → validated GeoJSON → MCP App / MapLibre
+Gemini Enterprise → MCP server → Java gateway
+  → server-side OAuth token exchange/cache
+    → Oracle AI Database Agent via A2A/private relay
+      → validated spatial JSON → GeoJSON → MapLibre MCP App
 ```
 
-The spatial tool accepts only a SKU and calls
-`/api/inventory/spatial-hotspots` on the Java gateway. The gateway calls the
-managed Oracle AI Database Agent using the registered Oracle OAuth client,
-parses the returned JSON, and rejects responses that do not contain the
-requested SKU and numeric coordinates. The MCP App receives only the validated
-response and labels it `oracle-ai-database-agent`.
+The gateway queries the managed Oracle agent, not the Toolkit spatial endpoint.
+The spatial tool does not accept Gemini-supplied coordinates or evidence and
+has no static/Toolkit/Select AI fallback. Failures are errors; `NO_DATA` means
+risk unknown in the scoped view. The tables contain seeded demo data that is
+read live, not production inventory telemetry.
 
-There is deliberately no model-passed `oracleAgentEvidence` input and no
-spatial Toolkit, static-data, or Select AI fallback. If the managed agent or
-gateway fails, the MCP tool fails and renders no spatial evidence. The A2UI
-transfer path remains separate: after explicit review and approval, its
-app-only action calls the MCP Java Toolkit to perform the write.
+## Try it
 
-Requires Node.js 20.19+ or 22.12+:
+Enable both actions on the same connector. Reload custom actions only after
+tool/schema changes, then start a fresh chat. Try:
+
+- “List the product IDs and names in the managed Oracle inventory catalog.”
+- “Show the spatial hotspot map for SKU-700.”
+- “Show the spatial hotspot map for SKU-APAC-210.”
+- “Map SKU-900 and summarize only the returned warehouse roles and scores.”
+- “Show the spatial hotspot map for SKU-501. If no rows are returned, say risk is unknown.”
+
+![Verified SKU-700 map with source, destination and satellite warehouses.](../docs/images/managed-agent-sku700-v6.jpg)
+
+Pan/zoom and point clicks inspect the returned result. Ask again for a new
+query. Lines are schematic source/destination connections, not road routing
+or transfer recommendations. Scores are 0–1 hotspot scores, not probabilities.
+See the [full runbook](../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md) for more prompts,
+screenshots, OAuth setup/renewal, deployment, known limits and provenance checks.
+
+## Build and run locally
+
+Requires Node.js 20.19+ or 22.12+. From this directory:
 
 ```bash
-./run.sh
+npm ci --ignore-scripts
+npm run typecheck
+npm run build
 ```
 
-Keep the Java service running at `http://127.0.0.1:8080`. The MCP App server defaults to that address; set `AGENT_SERVICE_URL` only when it differs.
-
-For a no-account local demonstration, start the pinned official MCP Apps basic host in a third terminal:
+First configure/start the Java gateway using the
+[runbook's local verification steps](../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md#local-verification).
+Then start this server:
 
 ```bash
-./run-basic-host.sh
+ORACLE_SPATIAL_EVIDENCE_URL=http://127.0.0.1:18090/api/inventory/spatial-hotspots \
+MCP_WRITES_ENABLED=false PORT=13001 MCP_BIND_HOST=127.0.0.1 npm run serve
 ```
 
-Open `http://127.0.0.1:8082`, choose `show-inventory-transfer-dashboard`, set the stockout-risk inputs, and call the tool. The official host fetches the `ui://` resource, renders it inside its two-level sandbox, and passes the live Toolkit-governed recommendations to the dashboard.
+Connect an MCP client to `http://127.0.0.1:13001/mcp`. Catalog requests use the
+same gateway origin at `/api/inventory/catalog`. `AGENT_SERVICE_URL` is also
+used by legacy Toolkit paths; set `ORACLE_SPATIAL_EVIDENCE_URL` explicitly so
+the managed read gateway is unambiguous.
 
-The wrapper pins the official host source and applies one checked-in local-runtime compatibility patch: it serves the already-built sandbox HTML with a direct file read because Express `sendFile` can return `NotFoundError` for that generated asset in some macOS runtime combinations. The host, sandbox, bridge, and MCP App implementation remain the pinned official code.
-
-ChatGPT can render this same portable MCP App without a separate UI implementation. ChatGPT supports the standard `_meta.ui.resourceUri` metadata and `ui/*` host bridge used here. To demonstrate it:
-
-1. Keep the Java service and `./run.sh` running.
-2. Make port 3001 reachable through HTTPS. Use OpenAI Secure MCP Tunnel when available, or an HTTPS development tunnel such as ngrok or Cloudflare Tunnel. ChatGPT cannot connect directly to `127.0.0.1`.
-3. In ChatGPT, enable **Developer mode** under **Settings → Security and login**. If the setting is unavailable, the account or workspace administrator must allow it.
-4. Open **Settings → Plugins** or `https://chatgpt.com/plugins`, select **+**, and create a developer-mode app using the tunnel URL ending in `/mcp`.
-5. Start a new chat, select the app from **+ → More**, and prompt: `Show the inventory transfer dashboard for products with a minimum stockout risk of 70, limited to 3 recommendations.`
-6. Confirm that ChatGPT calls `show-inventory-transfer-dashboard`, renders the
-   dashboard, and that selecting a recommendation sends its structured source,
-   target, SKU, and quantity back to the conversation.
-7. For an anonymous synthetic-data test, verify that the server exposes no
-   approval handle or action tool, then revoke public invocation. Test approval
-   and cancellation only after MCP-compatible OAuth is installed and writes
-   are explicitly enabled.
-
-See OpenAI's [MCP Apps compatibility](https://developers.openai.com/apps-sdk/mcp-apps-in-chatgpt), [Connect from ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt), and [testing](https://developers.openai.com/apps-sdk/deploy/testing) guidance. Developer Mode availability and permissions depend on the account and workspace policy.
-
-Claude web and Claude Desktop can use the same remote `/mcp` endpoint as a
-custom interactive connector. Remote connector traffic originates from
-Anthropic's cloud, so a private or loopback-only endpoint is insufficient.
-Neither host is required for the local basic-host walkthrough.
-
-To continue the host validation on another machine or account, follow
-[`../docs/chatgpt-claude-mcp-app-handoff.md`](../docs/chatgpt-claude-mcp-app-handoff.md)
-and complete the checked-in
-[`../docs/mcp-app-host-validation-results.md`](../docs/mcp-app-host-validation-results.md)
-template. The runbook includes prerequisites, database startup, tunnel choices,
-current ChatGPT and Claude navigation, prompts, expected results, screenshot
-names, security rules, and a copy/paste prompt for the next ChatGPT session.
-
-Gemini Enterprise supports this same `ui://` application through a Custom MCP
-Server data store. Use a dedicated private Cloud Run service and grant its
-Discovery Engine service agent `roles/run.invoker`; do not make that service
-anonymous. The sibling `../gemini-enterprise-a2a/` adapter remains the
-alternative native path, exposing the workflow over A2A and producing A2UI
-v0.8 controls. See
-[`../docs/gemini-enterprise-mcp-app.md`](../docs/gemini-enterprise-mcp-app.md).
-
-For production, use HTTPS, authentication, an explicit origin policy,
-service-to-service authorization between the MCP App server and agent service,
-durable approval/idempotency storage, and durable user identity rather than
-the local loopback trust boundary.
-
-## Cloud Run deployment
-
-The repository now includes a separate Cloud Run image and deployment script:
-
-```powershell
-.\deploy\gcp\deploy-chatgpt-mcp.ps1
-```
-
-For Gemini Enterprise, deploy the managed-agent gateway and MCP App together:
+## Verify the right source
 
 ```bash
-./deploy/gcp/deploy-oracle-agent-and-mcp-app.sh
+node --test test/concurrent-requests.test.mjs
+node test/live-evidence.mjs https://YOUR_MCP_SERVICE/mcp
 ```
 
-The script deploys the Java gateway with the three OAuth values supplied as
-Secret Manager references, then deploys the MCP App service. The existing
-Toolkit adapter remains inside the MCP App image for the transfer dashboard;
-it is not used for spatial reads. The gateway's spatial route uses the private
-Oracle relay and the managed Oracle AI Database Agent only.
+The first test uses a local fixture. The second calls the live MCP server and
+checks catalog, multiple SKUs, row identity, task IDs and NO_DATA without
+inventory writes. Neither a `source` label nor Gemini's `Load Skill`/Google
+Search trace proves SQL execution. Follow the
+[three-level verification procedure](../docs/MCP_APP_ORACLE_AGENT_SPATIAL.md#verify-provenance-not-just-a-working-map):
+host tool trace, authenticated server/A2A call, independent Oracle row/audit
+comparison. The returned `query` is requested SQL, not an execution receipt.
 
-The resource deliberately omits optional `_meta.ui.domain`: Claude and ChatGPT
-validate that stable sandbox origin using different host-specific formats, and
-this app does not run an iframe-local OAuth flow that needs a stable origin.
-It does advertise an explicit CSP. This self-contained single-file UI uses
-empty connection and resource allowlists because it loads no external content.
+## Boundaries and deployment
 
-The safe default is private and read-only. Set `MCP_WRITES_ENABLED=true` only
-behind an MCP-compatible OAuth 2.1 resource server. The deployment script
-refuses `-AllowUnauthenticated -EnableWriteActions` because app-only visibility
-is host metadata, not an authorization boundary. For a time-bounded
-developer-mode rendering test with synthetic data, `-AllowUnauthenticated`
-keeps write tools unregistered. Remove public invocation immediately after the
-test.
+- [server.ts](server.ts) obtains/validates results; the sandboxed map renders
+  them. OAuth secrets remain in the Java service, never in iframe arguments.
+- Map tiles are separate OpenStreetMap requests. Their origins must be
+  permitted by the resource CSP/network policy; tile success is not data proof.
+- `MCP_WRITES_ENABLED=false` advertises only catalog and spatial tools. Legacy
+  transfer-dashboard/write code is not the current read-only connector flow.
+- Transfer review belongs to A2A/A2UI and governed Toolkit operations. The
+  current Java A2UI implementation is draft/review, not a verified committed
+  inventory transfer. See [two-lane architecture](../docs/INVENTORY_UI_ARCHITECTURE.md).
+- Deploy both services with
+  [deploy-oracle-agent-and-mcp-app.sh](../deploy/gcp/deploy-oracle-agent-and-mcp-app.sh)
+  only after configuring its project and Secret Manager prerequisites. It
+  allows unauthenticated Cloud Run ingress for the demo. Production requires
+  ingress/caller authorization and an explicit service-vs-user identity design;
+  upstream Oracle OAuth does not protect the public gateway from callers.
 
-When a host result contains no approval handle, the widget makes that boundary
-visible with a read-only mode banner and a disabled **Read-only preview**
-control. It shows **Review this transfer** and the approval panel only when the
-authenticated server has issued a review-bound approval handle.
-
-See
-[`../docs/chatgpt-cloud-run-deployment.md`](../docs/chatgpt-cloud-run-deployment.md)
-for the verified preflight, sizing decision, commands, and access choices.
+For assisted maintenance, give ChatGPT/Claude the
+[`inventory-ui-architecture` skill](../.agents/skills/inventory-ui-architecture/SKILL.md)
+and the runbook. That development skill is distinct from Gemini's runtime
+“Load Skill” event and does not itself execute a database query.
