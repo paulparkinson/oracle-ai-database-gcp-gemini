@@ -2,214 +2,148 @@ package oracleai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.regex.Matcher;
+import java.util.*;
 import java.util.regex.Pattern;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
-/**
- * Retrieves spatial evidence from the managed Oracle AI Database Agent.
- *
- * <p>This service deliberately has no local, static, Select AI, or MCP Toolkit
- * fallback. The MCP App must fail closed when the managed agent cannot return
- * verifiable evidence.</p>
- */
+/** Managed-agent reads only. No Toolkit, host-supplied evidence, or static fallback. */
 @Service
 public class OracleSpatialEvidenceService {
+    private final OracleAiDatabaseAgentClient client;
+    private final ObjectMapper mapper;
+    private final String owner;
 
-    private static final Pattern SKU_PATTERN = Pattern.compile("\\b([A-Z][A-Z0-9]*-\\d+)\\b");
-    private final OracleAiDatabaseAgentClient oracleAgentClient;
-    private final ObjectMapper objectMapper;
-
-    public OracleSpatialEvidenceService(
-            OracleAiDatabaseAgentClient oracleAgentClient,
-            ObjectMapper objectMapper
-    ) {
-        this.oracleAgentClient = oracleAgentClient;
-        this.objectMapper = objectMapper;
+    public OracleSpatialEvidenceService(OracleAiDatabaseAgentClient client, ObjectMapper mapper, Environment env) {
+        this.client = client;
+        this.mapper = mapper;
+        this.owner = env.getProperty("INVENTORY_SCHEMA_OWNER", "FINANCIAL").toUpperCase(Locale.ROOT);
+        if (!owner.matches("[A-Z][A-Z0-9_]*")) throw new IllegalStateException("Invalid inventory schema owner");
     }
 
     public SpatialEvidence fetch(String requestedSku) throws Exception {
         String sku = normalizeSku(requestedSku);
-        String prompt = """
-                For %s, query the Oracle inventory-risk data and return ONLY valid JSON with this exact shape: {"sku":"%s","hotspots":[{"name":"warehouse or location name","role":"SOURCE, TARGET, DESTINATION, RECEIVING, or RELAY","latitude":0.0,"longitude":0.0,"riskScore":0.0}],"route":[[0.0,0.0],[0.0,0.0]]}. Use only values retrieved from the database; do not invent or explain outside the JSON.
-                """.formatted(sku, sku);
-
-        OracleAiDatabaseAgentClient.RemoteDatabaseResult result = oracleAgentClient.answer(prompt);
-        JsonNode root = parseJsonObject(result.responseText());
-        String responseSku = root.path("sku").asText("").trim().toUpperCase(Locale.ROOT);
-        if (!sku.equals(responseSku)) {
-            throw new IllegalStateException(
-                    "Oracle AI Database agent returned spatial evidence for '"
-                            + responseSku + "' instead of requested '" + sku + "'."
-            );
+        String scope = owner + ".SC_INVENTORY_RISK_DEMO_V";
+        // Keep PRODUCT_ID on every row. Filtering in Java prevents envelope-only SKU
+        // validation from silently assigning another product's warehouse/risk to this SKU.
+        String query = "SELECT PRODUCT_ID, WAREHOUSE_ID, WAREHOUSE_CODE, WAREHOUSE_NAME, "
+                + "LATITUDE, LONGITUDE, HOTSPOT_SCORE, RECOMMENDED_ROLE FROM " + scope
+                + " ORDER BY PRODUCT_ID, HOTSPOT_RANK FETCH FIRST 1001 ROWS ONLY";
+        var result = client.answer(queryPrompt(query));
+        Map<String, SpatialHotspot> matched = new LinkedHashMap<>();
+        for (JsonNode row : rows(result.responseText())) {
+            String productId = text(row, "PRODUCT_ID");
+            if (!sku.equals(productId)) continue;
+            String id = text(row, "WAREHOUSE_ID");
+            var hotspot = new SpatialHotspot(productId, id, text(row, "WAREHOUSE_CODE"),
+                    text(row, "WAREHOUSE_NAME"), text(row, "RECOMMENDED_ROLE").toUpperCase(Locale.ROOT),
+                    number(row, "LATITUDE", -90, 90), number(row, "LONGITUDE", -180, 180),
+                    number(row, "HOTSPOT_SCORE", 0, 1));
+            var previous = matched.putIfAbsent(id, hotspot);
+            if (previous != null && !previous.equals(hotspot))
+                throw new IllegalStateException("Conflicting warehouse rows in managed-agent response");
         }
-
-        JsonNode hotspotsNode = root.path("hotspots");
-        if (!hotspotsNode.isArray()) {
-            throw new IllegalStateException("Oracle AI Database agent spatial response has no hotspots array.");
+        var hotspots = List.copyOf(matched.values());
+        var sources = hotspots.stream().filter(h -> Set.of("SOURCE", "SOURCE_BUFFER").contains(h.role())).toList();
+        var targets = hotspots.stream().filter(h -> Set.of("TARGET", "DESTINATION", "DESTINATION_HOTSPOT", "RECEIVING").contains(h.role())).toList();
+        List<List<Double>> route = List.of();
+        if (sources.size() == 1 && targets.size() == 1) {
+            var source = sources.get(0);
+            var target = targets.get(0);
+            route = List.of(List.of(source.longitude(), source.latitude()), List.of(target.longitude(), target.latitude()));
         }
+        return new SpatialEvidence("oracle-ai-database-agent", sku, hotspots, route,
+                result.sourceDetail(), result.executionMode(), hotspots.isEmpty() ? "NO_DATA" : "DATA",
+                scope, result.taskId(), query);
+    }
 
-        List<SpatialHotspot> hotspots = new ArrayList<>();
-        for (JsonNode hotspotNode : hotspotsNode) {
-            String name = requiredText(hotspotNode, "name");
-            String role = requiredText(hotspotNode, "role").toUpperCase(Locale.ROOT);
-            double latitude = requiredNumber(hotspotNode, "latitude");
-            double longitude = requiredNumber(hotspotNode, "longitude");
-            double riskScore = requiredNumber(hotspotNode, "riskScore");
-            if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-                throw new IllegalStateException("Oracle AI Database agent returned invalid coordinates for " + name + ".");
-            }
-            if (riskScore < 0 || riskScore > 1 && riskScore > 100) {
-                throw new IllegalStateException("Oracle AI Database agent returned invalid riskScore for " + name + ".");
-            }
-            hotspots.add(new SpatialHotspot(name, role, latitude, longitude, riskScore));
+    public Map<String, Object> catalog() throws Exception {
+        String scope = owner + ".SC_PRODUCTS";
+        String query = "SELECT PRODUCT_ID, PRODUCT_NAME FROM " + scope
+                + " ORDER BY PRODUCT_ID FETCH FIRST 1001 ROWS ONLY";
+        var result = client.answer(queryPrompt(query));
+        Map<String, String> products = new LinkedHashMap<>();
+        for (JsonNode row : rows(result.responseText())) {
+            String id = text(row, "PRODUCT_ID");
+            String name = text(row, "PRODUCT_NAME");
+            String old = products.putIfAbsent(id, name);
+            if (old != null && !old.equals(name)) throw new IllegalStateException("Conflicting catalog rows");
         }
+        var items = products.entrySet().stream()
+                .map(e -> Map.of("sku", e.getKey(), "productName", e.getValue())).toList();
+        return Map.of("source", "oracle-ai-database-agent", "scope", scope, "items", items,
+                "status", items.isEmpty() ? "NO_DATA" : "DATA", "taskId", result.taskId(),
+                "query", query, "executionMode", result.executionMode(), "sourceDetail", result.sourceDetail(),
+                "interpretation", "Catalog scoped to " + scope
+                        + " only, not every inventory table. Catalog membership does not establish spatial evidence or risk.");
+    }
 
-        // The route is derived only from verified source/target coordinates in
-        // the same managed-agent response. No coordinates are synthesized.
-        List<List<Double>> route = verifiedRoute(root.path("route"));
-        if (route.isEmpty()) {
-            SpatialHotspot source = findRole(hotspots, "SOURCE");
-            SpatialHotspot target = findAnyRole(hotspots, "TARGET", "DESTINATION", "RECEIVING");
-            if (source != null && target != null) {
-                route = List.of(
-                        List.of(source.longitude(), source.latitude()),
-                        List.of(target.longitude(), target.latitude())
-                );
-            }
-        }
+    private static String queryPrompt(String query) {
+        return "Execute this exact read-only SQL using your database query tool: " + query
+                + ". Return ONLY JSON {\"rows\":[...]} with the SQL column names in uppercase. "
+                + "Preserve every returned PRODUCT_ID and warehouse ID on its own row. Do not summarize, "
+                + "combine products, infer coordinates, substitute another query, or use example/static data. "
+                + "If the query fails return {\"error\":\"query failed\"}, not an empty rows array.";
+    }
 
-        return new SpatialEvidence(
-                "oracle-ai-database-agent",
-                sku,
-                hotspots,
-                route,
-                result.sourceDetail(),
-                result.executionMode()
-        );
+    private JsonNode rows(String response) throws Exception {
+        String value = response == null ? "" : response.trim();
+        if (value.startsWith("```") && value.endsWith("```") && value.indexOf('\n') >= 0)
+            value = value.substring(value.indexOf('\n') + 1, value.length() - 3).trim();
+        JsonNode root = mapper.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+        if (root == null || root.has("error") || !root.path("rows").isArray())
+            throw new IllegalStateException("Managed agent did not return database rows");
+        if (root.path("rows").size() > 1000)
+            throw new IllegalStateException("Evidence exceeds row limit; pagination is required");
+        return root.path("rows");
+    }
+
+    static String normalizeSku(String value) {
+        String sku = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (sku.length() > 40 || !sku.matches("[A-Z0-9]+(?:[-_][A-Z0-9]+)*"))
+            throw new IllegalArgumentException("sku must be 1–40 letters/digits, optionally separated by hyphens or underscores.");
+        return sku;
     }
 
     public static String skuFromPrompt(String prompt) {
-        Matcher matcher = SKU_PATTERN.matcher(prompt == null ? "" : prompt.toUpperCase(Locale.ROOT));
-        return matcher.find() ? matcher.group(1) : DemoInventoryData.DEFAULT_PRODUCT_ID;
+        String value = prompt == null ? "" : prompt;
+        var matcher = Pattern.compile("(?i)\\bSKU(?:[-_][A-Z0-9]+)+\\b").matcher(value);
+        if (matcher.find()) return normalizeSku(matcher.group());
+        // Non-SKU identifiers must be explicit uppercase product codes; do not
+        // confuse prose such as 'stockout-risk' with a product.
+        matcher = Pattern.compile("\\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\\b").matcher(value);
+        return matcher.find() ? normalizeSku(matcher.group()) : DemoInventoryData.DEFAULT_PRODUCT_ID;
     }
 
-    private static String normalizeSku(String value) {
-        String sku = value == null || value.isBlank() ? DemoInventoryData.DEFAULT_PRODUCT_ID : value.trim();
-        if (!SKU_PATTERN.matcher(sku.toUpperCase(Locale.ROOT)).matches()) {
-            throw new IllegalArgumentException("sku must look like SKU-500.");
-        }
-        return sku.toUpperCase(Locale.ROOT);
+    private static String text(JsonNode row, String field) {
+        JsonNode node = row.path(field);
+        if ((!node.isTextual() && !node.isIntegralNumber()) || node.asText().isBlank())
+            throw new IllegalStateException("Missing database column " + field);
+        return node.asText().trim();
     }
 
-    private JsonNode parseJsonObject(String responseText) throws Exception {
-        String text = responseText == null ? "" : responseText.trim();
-        if (text.startsWith("```") && text.endsWith("```")) {
-            int firstNewline = text.indexOf('\n');
-            text = firstNewline >= 0 ? text.substring(firstNewline + 1, text.length() - 3).trim() : text;
-        }
-        try {
-            JsonNode parsed = objectMapper.readTree(text);
-            if (parsed != null && parsed.isObject()) {
-                return parsed;
-            }
-        } catch (Exception ignored) {
-            // The managed agent was asked for JSON, but extracting one object
-            // lets us reject prose without confusing it with a local fallback.
-        }
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start < 0 || end <= start) {
-            throw new IllegalStateException("Oracle AI Database agent did not return a JSON spatial evidence object.");
-        }
-        JsonNode parsed = objectMapper.readTree(text.substring(start, end + 1));
-        if (parsed == null || !parsed.isObject()) {
-            throw new IllegalStateException("Oracle AI Database agent spatial evidence is not a JSON object.");
-        }
-        return parsed;
+    private static double number(JsonNode row, String field, double min, double max) {
+        JsonNode node = row.path(field);
+        double n = node.asDouble(Double.NaN);
+        if (!node.isNumber() || !Double.isFinite(n) || n < min || n > max)
+            throw new IllegalStateException("Invalid database column " + field);
+        return n;
     }
 
-    private static String requiredText(JsonNode node, String field) {
-        String value = node.path(field).asText("").trim();
-        if (value.isBlank()) {
-            throw new IllegalStateException("Oracle AI Database agent spatial evidence is missing '" + field + "'.");
-        }
-        return value;
-    }
+    public record SpatialHotspot(String sku, String warehouseId, String locationCode, String name,
+            String role, double latitude, double longitude, double riskScore) {}
 
-    private static double requiredNumber(JsonNode node, String field) {
-        JsonNode value = node.path(field);
-        if (!value.isNumber()) {
-            throw new IllegalStateException("Oracle AI Database agent spatial evidence field '" + field + "' is not numeric.");
-        }
-        return value.asDouble();
-    }
-
-    private static List<List<Double>> verifiedRoute(JsonNode routeNode) {
-        if (!routeNode.isArray()) {
-            return List.of();
-        }
-        List<List<Double>> route = new ArrayList<>();
-        for (JsonNode point : routeNode) {
-            if (!point.isArray() || point.size() != 2 || !point.get(0).isNumber() || !point.get(1).isNumber()) {
-                return List.of();
-            }
-            double longitude = point.get(0).asDouble();
-            double latitude = point.get(1).asDouble();
-            if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
-                return List.of();
-            }
-            route.add(List.of(longitude, latitude));
-        }
-        if (route.size() < 2) {
-            return List.of();
-        }
-        boolean placeholderRoute = route.stream().allMatch(
-                point -> Double.compare(point.get(0), 0.0d) == 0
-                        && Double.compare(point.get(1), 0.0d) == 0
-        );
-        return placeholderRoute ? List.of() : route;
-    }
-
-    private static SpatialHotspot findRole(List<SpatialHotspot> hotspots, String role) {
-        return hotspots.stream()
-                .filter(hotspot -> hotspot.role().contains(role))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private static SpatialHotspot findAnyRole(List<SpatialHotspot> hotspots, String... roles) {
-        for (String role : roles) {
-            SpatialHotspot found = findRole(hotspots, role);
-            if (found != null) {
-                return found;
-            }
-        }
-        return null;
-    }
-
-    public record SpatialHotspot(
-            String name,
-            String role,
-            double latitude,
-            double longitude,
-            double riskScore
-    ) {}
-
-    public record SpatialEvidence(
-            String source,
-            String sku,
-            List<SpatialHotspot> hotspots,
-            List<List<Double>> route,
-            String sourceDetail,
-            String executionMode
-    ) {
+    public record SpatialEvidence(String source, String sku, List<SpatialHotspot> hotspots,
+            List<List<Double>> route, String sourceDetail, String executionMode, String status,
+            String scope, String taskId, String query) {
         public String summaryText() {
-            return "Oracle AI Database Agent returned " + hotspots.size()
-                    + " spatial hotspot(s) for " + sku + ".";
+            return hotspots.isEmpty()
+                    ? "No spatial rows for " + sku + " were returned from " + scope
+                        + ". Risk is unknown, not stable or safe. This does not prove absence from other inventory tables."
+                    : "Managed Oracle agent returned " + hotspots.size() + " warehouse rows for " + sku
+                        + " from " + scope + ". HOTSPOT_SCORE is a 0–1 score, not a stockout probability. "
+                        + "Any connection is a schematic source/destination link, not a road route or approved transfer. "
+                        + "This is a one-time query; no monitoring has been scheduled.";
         }
     }
 }

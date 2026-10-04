@@ -10,6 +10,7 @@ type MapLibreMap = {
   fitBounds: (bounds: [[number, number], [number, number]], options?: Record<string, unknown>) => void;
   project: (coordinate: [number, number]) => { x: number; y: number };
   resize: () => void;
+  remove: () => void;
   on: (...args: unknown[]) => void;
 };
 type MapLibreEvent = { features?: Array<{ properties?: Record<string, unknown> }> };
@@ -67,6 +68,7 @@ const spatialSource = document.querySelector<HTMLParagraphElement>("#spatial-sou
 
 let approvalId: string | undefined;
 let selectedRecommendation: TransferRecommendation | undefined;
+let activeMap: MapLibreMap | undefined;
 
 app.ontoolresult = (result) => {
   const rawPayload = result.structuredContent as {
@@ -75,6 +77,10 @@ app.ontoolresult = (result) => {
     sku?: string;
     geojson?: { type: string; features: unknown[] };
     hotspots?: unknown[];
+    status?: string;
+    interpretation?: string;
+    taskId?: string;
+    scope?: string;
   } | undefined;
   if (rawPayload?.view === "spatial-hotspots" && rawPayload.geojson) {
     sourceElement.textContent =
@@ -84,6 +90,7 @@ app.ontoolresult = (result) => {
     statusElement.textContent =
       "Connected to the MCP host; rendering Oracle spatial evidence.";
     renderSpatial({
+      ...rawPayload,
       source: rawPayload.source,
       sku: rawPayload.sku,
       geojson: rawPayload.geojson
@@ -112,6 +119,10 @@ app.ontoolresult = (result) => {
 function renderSpatial(payload: {
   source?: string;
   sku?: string;
+  status?: string;
+  interpretation?: string;
+  taskId?: string;
+  scope?: string;
   geojson: { type: string; features: unknown[] };
 }) {
   document.querySelector<HTMLElement>("#metrics")!.replaceChildren();
@@ -120,7 +131,19 @@ function renderSpatial(payload: {
   spatialView.hidden = false;
   spatialSource.textContent =
     `${payload.source ?? "Oracle Database"} · ${payload.sku ?? "inventory"} · read-only spatial evidence`;
+  activeMap?.remove();
+  activeMap = undefined;
   spatialMap.replaceChildren();
+  document.querySelector("#evidence-details")?.remove();
+  const details = document.createElement("p");
+  details.id = "evidence-details";
+  details.textContent = `${payload.interpretation ?? ""} Scope: ${payload.scope ?? ""}. A2A task: ${payload.taskId ?? ""}.`;
+  spatialView.append(details);
+  spatialMap.hidden = payload.status === "NO_DATA";
+  if (payload.status === "NO_DATA") {
+    modeElement.textContent = payload.interpretation ?? "No spatial rows returned; risk is unknown.";
+    return;
+  }
   if (typeof maplibregl === "undefined") {
     spatialMap.textContent = "MapLibre GL JS could not be loaded by this host.";
     return;
@@ -149,6 +172,7 @@ function renderSpatial(payload: {
     center: [-96, 38],
     zoom: 3
   });
+  activeMap = map;
   // MCP App hosts can reveal a previously hidden iframe after the map is
   // constructed. Resize once immediately and again after layout settles.
   map.resize();
@@ -166,18 +190,23 @@ function renderSpatial(payload: {
       feature => feature.geometry?.type === "Point"
     );
     const sourceFeatures = pointFeatures.filter(
-      feature => String(feature.properties?.recommendedRole ?? "")
-        .toUpperCase().includes("SOURCE")
+      feature => pointRole(feature) === "source"
     );
     const destinationFeatures = pointFeatures.filter(
-      feature => feature.properties?.recommendedRole !== "SOURCE"
+      feature => pointRole(feature) === "destination"
     );
     const returnedRouteFeatures = features.filter(
       feature => feature.geometry?.type === "LineString"
     );
-    const routeFeatures = returnedRouteFeatures.length > 0
-      ? returnedRouteFeatures
-      : buildReliefRoute(pointFeatures);
+    const routeFeatures = returnedRouteFeatures;
+    map.addSource("inventory-spatial-other", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: pointFeatures.filter(f => pointRole(f) === "other") }
+    });
+    map.addLayer({
+      id: "other-hotspot", type: "circle", source: "inventory-spatial-other",
+      paint: { "circle-color": "#9575cd", "circle-radius": 14, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 }
+    });
     map.addSource("inventory-spatial-source", {
       type: "geojson",
       data: { type: "FeatureCollection", features: sourceFeatures }
@@ -230,10 +259,10 @@ function renderSpatial(payload: {
       );
       installSpatialOverlay(map, pointFeatures, routeFeatures);
       modeElement.textContent =
-        `Map rendered ${pointFeatures.length} Oracle hotspot points and ${routeFeatures.length} route. `
+        `Map rendered ${pointFeatures.length} warehouse points and ${routeFeatures.length} schematic connection(s). `
         + "Click a point for warehouse details.";
     } else {
-      statusElement.textContent =
+      modeElement.textContent =
         "The Oracle spatial tool returned no drawable coordinates.";
     }
     const showWarehouseDetails = (event: MapLibreEvent) => {
@@ -241,10 +270,11 @@ function renderSpatial(payload: {
       spatialSource.textContent =
         `${properties.locationName ?? properties.name ?? "Warehouse"} · `
         + `${properties.recommendedRole ?? properties.role ?? ""} · `
-        + `risk ${properties.stockoutRiskScore ?? properties.riskScore ?? "n/a"}`;
+        + `hotspot score ${properties.hotspotScore ?? properties.riskScore ?? "n/a"} (0–1, not probability)`;
     };
     map.on("click", "source-hotspot", showWarehouseDetails);
     map.on("click", "destination-hotspot", showWarehouseDetails);
+    map.on("click", "other-hotspot", showWarehouseDetails);
   });
 }
 
@@ -304,7 +334,7 @@ function installSpatialOverlay(
       circle.setAttribute("cx", String(point.x));
       circle.setAttribute("cy", String(point.y));
       circle.setAttribute("r", "11");
-      circle.setAttribute("fill", feature.properties?.recommendedRole === "SOURCE" ? "#2f7d32" : "#c74634");
+      circle.setAttribute("fill", { source: "#2f7d32", destination: "#c74634", other: "#9575cd" }[pointRole(feature)]);
       circle.setAttribute("stroke", "#ffffff");
       circle.setAttribute("stroke-width", "3");
       circle.style.pointerEvents = "all";
@@ -314,7 +344,7 @@ function installSpatialOverlay(
         const properties = feature.properties ?? {};
         spatialSource.textContent =
           `${properties.locationCode ?? "Warehouse"} · ${properties.locationName ?? ""} · `
-          + `${properties.recommendedRole ?? ""} · risk ${properties.stockoutRiskScore ?? "n/a"}`;
+          + `${properties.recommendedRole ?? ""} · hotspot score ${properties.hotspotScore ?? "n/a"} (0–1, not probability)`;
       });
       overlay.append(circle);
     }
@@ -324,36 +354,11 @@ function installSpatialOverlay(
   redraw();
 }
 
-function buildReliefRoute(pointFeatures: SpatialFeature[]): SpatialFeature[] {
-  const source = pointFeatures.find(feature =>
-    String(feature.properties?.recommendedRole ?? "").toUpperCase().includes("SOURCE")
-  );
-  const destination = pointFeatures.find(feature =>
-    !String(feature.properties?.recommendedRole ?? "").toUpperCase().includes("SOURCE")
-  );
-  const sourceCoordinates = source?.geometry?.coordinates;
-  const destinationCoordinates = destination?.geometry?.coordinates;
-  if (
-    !Array.isArray(sourceCoordinates)
-    || !Array.isArray(destinationCoordinates)
-    || typeof sourceCoordinates[0] !== "number"
-    || typeof sourceCoordinates[1] !== "number"
-    || typeof destinationCoordinates[0] !== "number"
-    || typeof destinationCoordinates[1] !== "number"
-  ) {
-    return [];
-  }
-  return [{
-    geometry: {
-      type: "LineString",
-      coordinates: [sourceCoordinates, destinationCoordinates]
-    },
-    properties: {
-      kind: "relief-route",
-      sourceLocationCode: source?.properties?.locationCode,
-      targetLocationCode: destination?.properties?.locationCode
-    }
-  }];
+function pointRole(feature: SpatialFeature): "source" | "destination" | "other" {
+  const role = String(feature.properties?.recommendedRole ?? "").toUpperCase();
+  if (["SOURCE", "SOURCE_BUFFER"].includes(role)) return "source";
+  if (["TARGET", "DESTINATION", "DESTINATION_HOTSPOT", "RECEIVING"].includes(role)) return "destination";
+  return "other";
 }
 
 function collectCoordinates(features: SpatialFeature[]): Array<[number, number]> {

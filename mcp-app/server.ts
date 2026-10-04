@@ -14,7 +14,7 @@ import { z } from "zod";
 const resourceUri = "ui://oracle-supply-chain/inventory-exchange-v2";
 // Bump the resource URI when the embedded bundle changes so Gemini Enterprise
 // does not reuse a cached MCP App document from the previous revision.
-const spatialResourceUri = "ui://oracle-supply-chain/spatial-hotspots-v5";
+const spatialResourceUri = "ui://oracle-supply-chain/spatial-hotspots-v6";
 // Keep the previous URI alive so hosts that cached v2 receive the corrected
 // bundle instead of the old OpenStreetMap/CSP configuration.
 const legacySpatialResourceUri = "ui://oracle-supply-chain/spatial-hotspots-v2";
@@ -24,7 +24,7 @@ const oracleSpatialEvidenceUrl =
   process.env.ORACLE_SPATIAL_EVIDENCE_URL
   ?? new URL("/api/inventory/spatial-hotspots", agentServiceUrl).toString();
 const agentServiceTimeoutMs =
-  Number(process.env.AGENT_SERVICE_TIMEOUT_MS ?? "30000");
+  Number(process.env.AGENT_SERVICE_TIMEOUT_MS ?? "90000");
 const bindHost = process.env.MCP_BIND_HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? "3001");
 const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
@@ -70,15 +70,26 @@ const RejectionResultSchema = z.object({
   status: z.literal("REJECTED")
 });
 const SpatialHotspotSchema = z.object({
+  sku: z.string(),
+  warehouseId: z.string(),
+  locationCode: z.string(),
   name: z.string().min(1),
   role: z.string().min(1),
   latitude: z.number(),
   longitude: z.number(),
-  riskScore: z.number()
+  riskScore: z.number().min(0).max(1)
 });
 const OracleAgentSpatialEvidenceSchema = z.object({
   source: z.literal("oracle-ai-database-agent"),
   sku: z.string(),
+  status: z.enum(["DATA", "NO_DATA"]),
+  scope: z.string(),
+  taskId: z.string(),
+  query: z.string(),
+  interpretation: z.string(),
+  riskMetric: z.literal("HOTSPOT_SCORE"),
+  riskScale: z.string(),
+  routeKind: z.literal("schematic-source-destination-link"),
   hotspots: z.array(SpatialHotspotSchema),
   route: z.array(z.tuple([z.number(), z.number()])),
   sourceDetail: z.string().optional(),
@@ -141,7 +152,7 @@ function spatialGeoJson(hotspots: z.infer<typeof SpatialHotspotSchema>[]) {
       ...hotspot,
       locationName: hotspot.name,
       recommendedRole: hotspot.role,
-      stockoutRiskScore: hotspot.riskScore
+      hotspotScore: hotspot.riskScore
     }
     }))
   };
@@ -159,12 +170,23 @@ async function loadOracleSpatialEvidence(sku: string, maximumRows: number) {
     throw new Error(
       `Oracle AI Database Agent spatial endpoint failed with HTTP ${response.status}. `
         + "No MCP Toolkit or static spatial fallback is configured."
+        + " Cause and risk are unknown; do not infer a missing SKU, database outage, or stable inventory."
     );
   }
   const evidence = OracleAgentSpatialEvidenceSchema.parse(payload);
+  if (evidence.sku !== sku.trim().toUpperCase()
+      || evidence.hotspots.some(h => h.sku !== evidence.sku)
+      || (evidence.status === "NO_DATA") !== (evidence.hotspots.length === 0)) {
+    throw new Error("Managed-agent evidence contract mismatch; no fallback is allowed.");
+  }
+  const hotspots = evidence.hotspots.slice(0, maximumRows);
   return {
     ...evidence,
-    hotspots: evidence.hotspots.slice(0, maximumRows)
+    hotspots,
+    totalRows: evidence.hotspots.length,
+    truncated: hotspots.length < evidence.hotspots.length,
+    route: evidence.route.every(p => hotspots.some(h => h.longitude === p[0] && h.latitude === p[1]))
+      ? evidence.route : []
   };
 }
 
@@ -176,7 +198,7 @@ const server = new McpServer({
   version: "0.1.0"
 });
 
-registerAppTool(server, "show-inventory-transfer-dashboard", {
+if (writesEnabled) registerAppTool(server, "show-inventory-transfer-dashboard", {
   title: "Show inventory transfer dashboard",
   description:
     "Shows Oracle Database MCP Java Toolkit-governed stockout exposure and inventory-transfer recommendations.",
@@ -226,10 +248,27 @@ registerAppTool(server, "show-inventory-transfer-dashboard", {
   };
 });
 
+server.registerTool("list-inventory-items", {
+  title: "List managed Oracle inventory catalog",
+  description: "Queries the managed Oracle AI Database Agent for the SC_PRODUCTS catalog. Scoped catalog only, not all inventory tables. Do not use transfer recommendations as a catalog. No Toolkit fallback.",
+  inputSchema: {},
+  annotations: { readOnlyHint: true, openWorldHint: false }
+}, async () => {
+  const endpoint = new URL("/api/inventory/catalog", oracleSpatialEvidenceUrl);
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(agentServiceTimeoutMs) });
+  if (!response.ok) throw new Error("Managed Oracle catalog unavailable; cause unknown. No Toolkit fallback.");
+  const catalog = z.object({
+    source: z.literal("oracle-ai-database-agent"), scope: z.string(), taskId: z.string(),
+    query: z.string(), status: z.enum(["DATA", "NO_DATA"]), interpretation: z.string(),
+    items: z.array(z.object({ sku: z.string(), productName: z.string() }))
+  }).parse(await response.json());
+  return { content: [{ type: "text", text: catalog.interpretation }], structuredContent: catalog };
+});
+
 registerAppTool(server, "show-inventory-spatial-hotspots", {
   title: "Show inventory spatial hotspots",
   description:
-    "Shows Oracle Database warehouse hotspot coordinates and the recommended relief route as an interactive MapLibre map.",
+    "Queries the managed Oracle AI Database Agent server-side and renders its warehouse rows. Pass only the SKU, never evidence. NO_DATA means risk UNKNOWN, not safe/stable. Errors do not prove database outage or absent spatial profiles. HOTSPOT_SCORE is not a probability; links are schematic, not road routes or transfer approvals. No Toolkit fallback, no monitoring is scheduled. Use list-inventory-items for the scoped catalog.",
   inputSchema: {
     sku: z.string().min(1).max(40).default("SKU-500")
       .describe("Product SKU to map"),
@@ -251,9 +290,10 @@ registerAppTool(server, "show-inventory-spatial-hotspots", {
   return {
     content: [{
       type: "text",
-      text: `${response.source} returned ${response.hotspots.length} spatial hotspot features for ${response.sku}.`
+      text: response.interpretation + ` Displaying ${response.hotspots.length} of ${response.totalRows} returned rows. A2A task: ${response.taskId}.`
     }],
     structuredContent: {
+      ...response,
       view: "spatial-hotspots",
       source: response.source,
       sku: response.sku,
@@ -266,7 +306,7 @@ registerAppTool(server, "show-inventory-spatial-hotspots", {
             ? [{
                 type: "Feature",
                 geometry: { type: "LineString", coordinates: response.route },
-                properties: { kind: "relief-route", source: response.source }
+                properties: { kind: response.routeKind, source: response.source }
               }]
             : [])
         ]

@@ -129,7 +129,8 @@ public class OracleAiDatabaseAgentClient {
                         textValue(metadata, "action"),
                         "delegate-oracle-ai-database-agent"
                 ),
-                artifacts
+                artifacts,
+                taskNode.path("id").asText("")
         );
     }
 
@@ -506,6 +507,7 @@ public class OracleAiDatabaseAgentClient {
             String executionMode,
             String sourceDetail,
             String action,
-            List<Artifact> artifacts
+            List<Artifact> artifacts,
+            String taskId
     ) {}
 }

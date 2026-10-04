@@ -13,7 +13,9 @@ test("overlapping spatial requests have independent MCP transports", async () =>
     setTimeout(() => {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ source: "oracle-ai-database-agent", sku,
-        hotspots: [], route: [] }));
+        hotspots: [], route: [], status: "NO_DATA", scope: "TEST.SC_INVENTORY_RISK_DEMO_V",
+        taskId: "test-task", query: "test-query", interpretation: "No rows; risk unknown.",
+        riskMetric: "HOTSPOT_SCORE", riskScale: "0–1", routeKind: "schematic-source-destination-link" }));
     }, 200);
   });
   upstream.listen(0, "127.0.0.1");
@@ -50,6 +52,13 @@ test("overlapping spatial requests have independent MCP transports", async () =>
     }));
     assert.equal(responses.length, 2);
     assert.deepEqual(requestedSkus.sort(), ["SKU-500", "SKU-501"]);
+    const listed = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
+      body: JSON.stringify({jsonrpc: "2.0", id: 3, method: "tools/list", params: {}})
+    }).then(r => r.json());
+    assert.deepEqual(listed.result.tools.map(t => t.name).sort(),
+      ["list-inventory-items", "show-inventory-spatial-hotspots"]);
   } finally {
     child.kill();
     await once(child, "exit");
