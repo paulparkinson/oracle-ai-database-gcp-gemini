@@ -41,6 +41,11 @@ public class OracleSpatialEvidenceController {
         return spatialEvidenceService.catalog();
     }
 
+    @GetMapping(path = "/stockout-risks", produces = MediaType.APPLICATION_JSON_VALUE)
+    public OracleSpatialEvidenceService.RiskList stockoutRisks() throws Exception {
+        return spatialEvidenceService.stockoutRisks();
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> invalidSku(IllegalArgumentException error) {
         return ResponseEntity.badRequest().body(Map.of("code", "INVALID_SKU", "error", error.getMessage()));

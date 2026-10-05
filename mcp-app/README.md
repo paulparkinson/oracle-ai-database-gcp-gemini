@@ -2,11 +2,12 @@
 
 This is the maintained MCP server, MapLibre map and Cytoscape.js graph in
 `oracle-ai-database-gcp-gemini`. The existing Gemini Enterprise **Oracle
-Supply-Chain MCP App** connector can expose three read-only actions:
+Supply-Chain MCP App** connector can expose four read-only actions:
 
 | Gemini action / MCP tool | Input | Result |
 | --- | --- | --- |
 | List-inventory-items / `list-inventory-items` | None | Managed-agent catalog, product IDs/names, scope and A2A task ID. |
+| List-inventory-stockout-risks / `list-inventory-stockout-risks` | None | Compact product risk table; STOCKOUT_PROBABILITY, quarter and region. No UI resource. |
 | Show-inventory-spatial-hotspots / `show-inventory-spatial-hotspots` | `sku`; optional `maximumRows` (2–50, default 20) | Validated warehouse rows, provenance fields, GeoJSON and `ui://oracle-supply-chain/spatial-hotspots-v6`. |
 | Show-supply-chain-graph / `show-supply-chain-graph` | `sku` only | Managed-agent dependency rows transformed to typed nodes/edges and `ui://oracle-supply-chain/supply-chain-graph-v1`. |
 
@@ -25,9 +26,10 @@ read live, not production inventory telemetry.
 
 ## Try it
 
-Enable all three actions on the same connector. Reload custom actions only after
+Enable all four actions on the same connector. Reload custom actions only after
 tool/schema changes, then start a fresh chat. Try:
 
+- “List SKUs with risk of stock outages.” — plain table, no maps or graphs.
 - “List the product IDs and names in the managed Oracle inventory catalog.”
 - “Show the spatial hotspot map for SKU-700.”
 - “Show the spatial hotspot map for SKU-APAC-210.”

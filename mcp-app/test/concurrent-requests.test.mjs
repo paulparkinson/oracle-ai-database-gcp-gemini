@@ -7,7 +7,16 @@ import { test } from "node:test";
 test("overlapping spatial requests have independent MCP transports", async () => {
   const requestedSkus = [];
   const graphRequests = [];
+  let riskRequests = 0;
   const upstream = createServer((req, res) => {
+    if (req.url === "/api/inventory/stockout-risks") {
+      riskRequests++;
+      if (riskRequests > 1) { res.writeHead(503); res.end("Unavailable"); return; }
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({source:"oracle-ai-database-agent",scope:"TEST.SC_INVENTORY_RISK_DEMO_V",
+        status:"NO_DATA",items:[],totalRows:0,truncated:false,riskMetric:"STOCKOUT_PROBABILITY",
+        riskScale:"0–1",taskId:"task",contextId:"context",query:"SELECT"})); return;
+    }
     if (req.url.startsWith("/api/inventory/supply-chain-graph")) {
       graphRequests.push(req.url);
       res.writeHead(503); res.end("Upstream unavailable"); return;
@@ -63,7 +72,20 @@ test("overlapping spatial requests have independent MCP transports", async () =>
       body: JSON.stringify({jsonrpc: "2.0", id: 3, method: "tools/list", params: {}})
     }).then(r => r.json());
     assert.deepEqual(listed.result.tools.map(t => t.name).sort(),
-      ["list-inventory-items", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
+      ["list-inventory-items", "list-inventory-stockout-risks", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
+    assert.equal(listed.result.tools.find(t => t.name === "list-inventory-stockout-risks")._meta?.ui, undefined);
+    for (const isFailure of [false, true]) {
+      const risk = await fetch(endpoint, {
+        method:"POST", headers:{"Content-Type":"application/json",Accept:"application/json, text/event-stream"},
+        body:JSON.stringify({jsonrpc:"2.0",id:10 + riskRequests,method:"tools/call",
+          params:{name:"list-inventory-stockout-risks",arguments:{}}})
+      }).then(r => r.json());
+      assert.equal(Boolean(risk.result.isError), isFailure);
+      assert.equal(risk.result._meta?.ui, undefined);
+      if (!isFailure) assert.equal(risk.result.structuredContent.status, "NO_DATA");
+    }
+    assert.equal(riskRequests, 2, "Exactly one upstream risk query per request");
+    assert.equal(requestedSkus.length, 2, "Risk list never opens spatial views or falls back to them");
     const failed = await fetch(endpoint, {
       method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" },
       body: JSON.stringify({jsonrpc: "2.0", id: 4, method: "tools/call", params: {

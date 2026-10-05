@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 import { GraphEvidence } from "./src/graph-contract.js";
+import { riskListResult } from "./src/risk-list.js";
 
 const resourceUri = "ui://oracle-supply-chain/inventory-exchange-v2";
 // Bump the resource URI when the embedded bundle changes so Gemini Enterprise
@@ -252,7 +253,7 @@ if (writesEnabled) registerAppTool(server, "show-inventory-transfer-dashboard", 
 
 server.registerTool("list-inventory-items", {
   title: "List managed Oracle inventory catalog",
-  description: "Queries the managed Oracle AI Database Agent for the SC_PRODUCTS catalog. Scoped catalog only, not all inventory tables. Do not use transfer recommendations as a catalog. No Toolkit fallback.",
+  description: "Lists product IDs and names from the managed Oracle AI Database Agent SC_PRODUCTS catalog. For stockout-risk lists or rankings use list-inventory-stockout-risks instead; do not enumerate map/graph actions to infer risk. No Toolkit fallback.",
   inputSchema: {},
   annotations: { readOnlyHint: true, openWorldHint: false }
 }, async () => {
@@ -267,9 +268,20 @@ server.registerTool("list-inventory-items", {
   return { content: [{ type: "text", text: catalog.interpretation }], structuredContent: catalog };
 });
 
+server.registerTool("list-inventory-stockout-risks", {
+  title: "List SKUs at risk of stockouts",
+  description: "Use for simple questions such as 'list SKUs with risk of stock outages', 'list SKUs at risk of stockouts, highest risk first', or 'which products have stockout risk'. One server-side managed Oracle AI Database Agent query returns a concise product-risk table ranked by STOCKOUT_PROBABILITY, with database risk level, quarter and primary region. Plain text only, no MCP App. Answer only the table and metric note; do not load maps or graphs for this question. This probability is not HOTSPOT_SCORE or the Toolkit transfer risk score. No Google Search, Toolkit or invented-data fallback. NO_DATA does not establish safety.",
+  inputSchema: {}, annotations: { readOnlyHint: true, openWorldHint: false }
+}, async () => {
+  const endpoint = new URL("/api/inventory/stockout-risks", oracleSpatialEvidenceUrl);
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(agentServiceTimeoutMs) });
+  if (!response.ok) throw new Error("Managed Oracle risk list unavailable; cause unknown. Do not substitute map, graph, Toolkit or search results.");
+  return riskListResult(await response.json());
+});
+
 registerAppTool(server, "show-supply-chain-graph", {
   title: "Show supply-chain dependency graph",
-  description: "Queries the managed Oracle AI Database Agent server-side for SC_SUPPLY_CHAIN_GRAPH_V, an Oracle view executing SQL/PGQ GRAPH_TABLE and MATCH on SUPPLY_CHAIN_GRAPH, then opens an interactive Cytoscape.js MCP App with active supply-chain paths and alerts. Pass only a SKU; never nodes, edges or evidence. No relational-join fallback, image generation, Toolkit, direct JDBC, model-payload or static fallback. Query failures are errors, not NO_DATA. NO_DATA means no complete paths returned, not absence or safety. Use list-inventory-items for catalog discovery.",
+  description: "Only when the user explicitly requests a supply-chain/dependency GRAPH: query the managed Oracle AI Database Agent for SC_SUPPLY_CHAIN_GRAPH_V (GRAPH_TABLE/MATCH on SUPPLY_CHAIN_GRAPH) and open an interactive Cytoscape.js MCP App. Do NOT use for a simple SKU/risk list; use list-inventory-stockout-risks for that. Pass only a SKU, never nodes/edges/evidence. No joins, generated images, Toolkit, JDBC or static fallback. Errors are errors; NO_DATA is not safety.",
   inputSchema: { sku: z.string().min(1).max(40).describe("Product SKU to query") },
   _meta: { ui: { resourceUri: graphResourceUri, visibility: ["model", "app"] } },
   annotations: { readOnlyHint: true, openWorldHint: false }
@@ -293,7 +305,7 @@ registerAppResource(server, graphResourceUri, graphResourceUri, { mimeType: RESO
 registerAppTool(server, "show-inventory-spatial-hotspots", {
   title: "Show inventory spatial hotspots",
   description:
-    "Queries the managed Oracle AI Database Agent server-side and renders its warehouse rows. Pass only the SKU, never evidence. NO_DATA means risk UNKNOWN, not safe/stable. Errors do not prove database outage or absent spatial profiles. HOTSPOT_SCORE is not a probability; links are schematic, not road routes or transfer approvals. No Toolkit fallback, no monitoring is scheduled. Use list-inventory-items for the scoped catalog.",
+    "Only when the user explicitly requests a spatial hotspot MAP: query the managed Oracle AI Database Agent and render warehouse rows. Do NOT call for every SKU to answer a simple risk-list question; use list-inventory-stockout-risks instead. Pass only the SKU, never evidence. NO_DATA means risk UNKNOWN, not safe/stable. HOTSPOT_SCORE is not a probability; links are schematic, not road routes or transfer approvals. No Toolkit fallback or scheduled monitoring.",
   inputSchema: {
     sku: z.string().min(1).max(40).default("SKU-500")
       .describe("Product SKU to map"),

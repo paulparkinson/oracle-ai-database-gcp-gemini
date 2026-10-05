@@ -27,7 +27,7 @@ Inspect only the implementation relevant to the task.
 Maintain two explicit lanes:
 
 - **Explore:** MCP Apps for interactive, primarily read-only graph and spatial
-  experiences. The server exposes `list-inventory-items`,
+  experiences. The server exposes `list-inventory-items`, `list-inventory-stockout-risks`,
   `show-inventory-spatial-hotspots` and `show-supply-chain-graph`. Reload and
   enable new connector actions after deployment; verify registration separately.
 - **Decide and act:** A2A inventory-action coordinator returning A2UI for
@@ -55,6 +55,14 @@ server-side. Initial browser consent is legitimate; it is not required for
 every request while the refresh grant remains valid. Stored-grant identity is
 not automatic per-user delegation, and public demo ingress is not production
 authorization. Do not promise indefinite token life or implemented rotation.
+
+For a simple stockout-risk question, use the non-visual risk-list action: one
+managed-agent read, one compact table, no map/graph fan-out. Preserve its
+STOCKOUT_PROBABILITY and quarter; this is not HOTSPOT_SCORE or the Toolkit's
+0–100 transfer score. Request graph/map only when the user asks for them.
+Ordinary A2UI text requests create a review, never execute a transfer; users
+need not append "review only" to every prompt. Execution requires the separate
+explicit approval control, not model interpretation of prose.
 
 Use the catalog to discover SKUs, then demonstrate SKU-700 and SKU-APAC-210;
 SKU-501 is the dated NO_DATA example. These are live reads of seeded demo

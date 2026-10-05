@@ -13,10 +13,15 @@ The Java agent runtime is the implementation used in the live demo. The Python a
 For the current interactive catalog/map flow, start with
 [Managed Oracle agent + MCP App](docs/MCP_APP_ORACLE_AGENT_SPATIAL.md), including
 dynamic prompts, screenshots, local/cloud setup and a three-level provenance
-check. The MCP server offers **List-inventory-items**,
+check. The MCP server offers **List-inventory-items**, **List-inventory-stockout-risks**,
 **Show-inventory-spatial-hotspots** and **Show-supply-chain-graph** on the same
 **Oracle Supply-Chain MCP App** connector. After deploying a tool change, reload
 custom actions and enable the new action; existing registrations do not update themselves.
+
+Start with “List SKUs with risk of stock outages.” The non-visual risk action
+returns one compact table of database `STOCKOUT_PROBABILITY` values for the
+stated quarter, not maps for every product. Then explicitly request the graph
+and map for one returned SKU. See the [four-step demo](docs/INVENTORY_UI_ARCHITECTURE.md#suggested-demo-sequence).
 
 For the interactive **Cytoscape.js** graph, see the
 [graph runbook](docs/MCP_APP_ORACLE_AGENT_GRAPH.md). Ask “Use Show-supply-chain-graph

@@ -17,7 +17,20 @@ async function rpc(method, params) {
 }
 const listed = await rpc("tools/list", {});
 assert.deepEqual(listed.tools.map(t => t.name).sort(),
-  ["list-inventory-items", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
+  ["list-inventory-items", "list-inventory-stockout-risks", "show-inventory-spatial-hotspots", "show-supply-chain-graph"]);
+const riskTool = listed.tools.find(t => t.name === "list-inventory-stockout-risks");
+assert.ok(!riskTool._meta?.ui, "The basic risk list must not launch an MCP App");
+const riskResult = await rpc("tools/call", { name: riskTool.name, arguments: {} });
+const risks = riskResult.structuredContent;
+assert.equal(risks.source, "oracle-ai-database-agent");
+assert.equal(risks.riskMetric, "STOCKOUT_PROBABILITY");
+assert.ok(risks.taskId && risks.contextId);
+assert.ok(!riskResult._meta?.ui);
+assert.ok(riskResult.content.every(c => c.type === "text"));
+assert.ok(risks.items.length > 0);
+assert.ok(risks.items.every((r, i) => r.stockoutProbability > 0 && r.stockoutProbability <= 1
+  && (!i || r.stockoutProbability <= risks.items[i - 1].stockoutProbability)));
+console.log("Stockout risks:", JSON.stringify(risks));
 const catalog = (await rpc("tools/call", { name: "list-inventory-items", arguments: {} })).structuredContent;
 assert.equal(catalog.source, "oracle-ai-database-agent");
 assert.equal(catalog.scope, "FINANCIAL.SC_PRODUCTS");
@@ -40,4 +53,4 @@ for (const sku of ["SKU-500", "SKU-700", "SKU-APAC-210", "SKU-501", "GRID-CTRL"]
   }
   console.log(sku, JSON.stringify({status: result.status, taskId: result.taskId, hotspots: result.hotspots, route: result.route}));
 }
-console.log("PASS: live managed-agent catalog, product identity, no-data and no-Toolkit contracts.");
+console.log("PASS: live managed-agent plain risk list, catalog, product identity, no-data and no-Toolkit contracts.");

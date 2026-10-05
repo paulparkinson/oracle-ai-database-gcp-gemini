@@ -78,6 +78,43 @@ public class OracleSpatialEvidenceService {
                         + " only, not every inventory table. Catalog membership does not establish spatial evidence or risk.");
     }
 
+    /** Plain product-level summary: one managed-agent call, no map/graph requests. */
+    public RiskList stockoutRisks() throws Exception {
+        String scope = owner + ".SC_INVENTORY_RISK_DEMO_V";
+        String query = "SELECT DISTINCT PRODUCT_ID, PRODUCT_NAME, QUARTER_LABEL, OVERALL_RISK_LEVEL, "
+                + "STOCKOUT_PROBABILITY, PRIMARY_REGION FROM " + scope
+                + " ORDER BY STOCKOUT_PROBABILITY DESC, PRODUCT_ID FETCH FIRST 1000 ROWS ONLY";
+        var result = client.answer(queryPrompt(query));
+        JsonNode rows = rows(result.responseText());
+        // The upstream SQL tool caps at 1000; never rank a potentially partial set.
+        if (rows.size() >= 1000) throw new IllegalStateException("Risk list exceeds upstream row limit");
+        Map<String, RiskItem> unique = new LinkedHashMap<>();
+        for (JsonNode row : rows) {
+            String sku = text(row, "PRODUCT_ID");
+            if (!normalizeSku(sku).equals(sku)) throw new IllegalStateException("Invalid product ID");
+            String quarter = text(row, "QUARTER_LABEL");
+            if (!quarter.matches("[0-9]{4}-Q[1-4]")) throw new IllegalStateException("Invalid risk period");
+            var item = new RiskItem(sku, text(row, "PRODUCT_NAME"), quarter,
+                    text(row, "OVERALL_RISK_LEVEL"), number(row, "STOCKOUT_PROBABILITY", 0, 1),
+                    row.path("PRIMARY_REGION").isNull() ? "Not reported" : text(row, "PRIMARY_REGION"));
+            var previous = unique.putIfAbsent(sku, item);
+            if (previous != null && !previous.equals(item)) throw new IllegalStateException("Conflicting product risk rows");
+        }
+        var ranked = unique.values().stream().filter(r -> r.stockoutProbability() > 0)
+                .sorted(Comparator.comparingDouble(RiskItem::stockoutProbability).reversed()
+                    .thenComparing(RiskItem::sku)).toList();
+        return new RiskList("oracle-ai-database-agent", scope, ranked.isEmpty() ? "NO_DATA" : "DATA",
+                ranked.stream().limit(20).toList(), ranked.size(), ranked.size() > 20,
+                "STOCKOUT_PROBABILITY", "0–1 probability for the returned quarter; seeded demo estimates",
+                result.taskId(), result.contextId(), query);
+    }
+
+    public record RiskItem(String sku, String productName, String quarter, String riskLevel,
+            double stockoutProbability, String primaryRegion) {}
+    public record RiskList(String source, String scope, String status, List<RiskItem> items,
+            int totalRows, boolean truncated, String riskMetric, String riskScale,
+            String taskId, String contextId, String query) {}
+
     private static String queryPrompt(String query) {
         return "Execute this exact read-only SQL using your database query tool: " + query
                 + ". Return ONLY JSON {\"rows\":[...]} with the SQL column names in uppercase. "

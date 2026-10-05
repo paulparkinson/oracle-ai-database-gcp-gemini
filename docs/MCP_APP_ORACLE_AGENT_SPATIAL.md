@@ -37,15 +37,15 @@ Gemini's surrounding narration is not evidence of any database operation.
 
 ## Run it in Gemini Enterprise
 
-Use the existing **Oracle Supply-Chain MCP App** connector, with both
-**List-inventory-items** and **Show-inventory-spatial-hotspots** enabled.
-These are two actions on one connector, not two new connectors. The same
-connector now also supports the [Cytoscape graph action](MCP_APP_ORACLE_AGENT_GRAPH.md);
-its runbook includes the updated three-action screenshot. After a tool
+Use the existing **Oracle Supply-Chain MCP App** connector, with
+**List-inventory-items**, **List-inventory-stockout-risks**,
+**Show-inventory-spatial-hotspots** and **Show-supply-chain-graph** enabled.
+These are four actions on one connector, not new connectors. See also the
+[Cytoscape graph runbook](MCP_APP_ORACLE_AGENT_GRAPH.md). After a tool
 schema change, reload custom actions and start a fresh conversation. No reload,
 deployment, or OAuth consent is normally needed merely to choose another SKU.
 
-![Existing Oracle Supply-Chain MCP App connector with catalog and spatial actions enabled.](images/managed-agent-actions-enabled.jpg)
+![Existing Oracle Supply-Chain MCP App connector with all four read actions enabled.](images/managed-agent-four-actions.jpg)
 
 *Actual connector configuration, October 4, 2026. The read-only deployment
 does not advertise the Toolkit transfer dashboard.*
@@ -82,9 +82,10 @@ or an approved transfer.*
 ## Why the Java gateway exists
 
 This is a bounded adapter in the existing Java/Spring Boot runtime, not a new
-database or a replacement Oracle agent. It exposes two read endpoints:
-`GET /api/inventory/catalog` and
-`GET /api/inventory/spatial-hotspots?sku=SKU-700`.
+database or a replacement Oracle agent. Its read endpoints cover catalog,
+plain stockout risk, spatial hotspots and supply-chain graph evidence:
+`/api/inventory/catalog`, `/api/inventory/stockout-risks`,
+`/api/inventory/spatial-hotspots` and `/api/inventory/supply-chain-graph`.
 
 The MCP server calls it; the gateway authenticates to the managed Oracle agent
 and asks that agent to execute a fixed read-only query. Java validates the
@@ -109,6 +110,82 @@ this demo. Upstream OAuth alone does not make those HTTP endpoints private.
 Before production, protect ingress/service-to-service calls, decide per-user
 versus explicitly authorized service access, apply least privilege, and handle
 refresh-token rotation/revocation. See the renewal limitations below.
+
+## Plain stockout-risk list
+
+For “List SKUs with risk of stock outages,” use the separate non-visual
+`list-inventory-stockout-risks` action on the same connector. Its gateway endpoint
+is `/api/inventory/stockout-risks`. Deploy both services, reload custom actions,
+enable **List-inventory-stockout-risks**, and start a fresh main-chat conversation.
+This addition does not change agent registrations, the database schema or profile.
+
+The managed agent executes one bounded `SELECT DISTINCT` of product ID/name,
+quarter, overall risk level, `STOCKOUT_PROBABILITY` and primary region from
+`SC_INVENTORY_RISK_DEMO_V`. Java validates/deduplicates products and sorts by
+probability descending, then SKU. It excludes zero probabilities, displays at
+most 20 products, reports truncation, and rejects the 1,000-row upstream cap.
+The view covers seeded products with warehouse evidence, not every inventory table.
+No map/graph calls, GeoJSON, resource URI, recommendations or browser OAuth are
+part of this action. Tool descriptions reserve visualizations for explicit requests.
+Host routing is model-driven; verify the actual trace rather than promising
+that descriptions alone enforce every future prompt.
+
+`STOCKOUT_PROBABILITY` is the database's quarter-level probability, **not** the
+warehouse `HOTSPOT_SCORE`. Independent October 4 reads showed SKU-500 probability
+0.72 and hotspot 0.86; never interchange them. Preserve the returned quarter
+instead of asserting that the estimates are for today or next quarter.
+
+Test with `node --import tsx --test test/risk-list.test.mjs test/concurrent-requests.test.mjs`
+from `mcp-app`, and `mvn -Dtest=OracleRiskListTest test` from `oracle_agent_java`.
+For a live read, call the deployed gateway `/api/inventory/stockout-risks`.
+Record its `contextId` and correlate Oracle team/tool history as described in
+the [graph verification procedure](MCP_APP_ORACLE_AGENT_GRAPH.md#verify-the-source-and-actual-query),
+checking the risk query and values rather than the graph view. The `query`
+field is requested SQL, not a signed execution receipt.
+In Gemini, test the four-step demo: step 1 must call only the risk-list action
+and show a short table with a metric/quarter note, without map iframes or
+unsupported warehouse/transfer advice. Do not mark a local test as a Gemini test.
+
+Predeployment verification, October 4, 2026 (America/New_York): 21 Java tests,
+five MCP tests, typechecking and both UI builds passed. A candidate-gateway
+live read returned five products, task `418effd8-c746-40e7-b7ea-f382a2748cc9`.
+Independent Oracle history matched context `5C2AEA45-2B81-01C4-E063-6914000A4BF3`
+to successful team execution `5C2AEA45-2B82-01C4-E063-6914000A4BF3`, with one
+SQL_TOOL result containing the requested DISTINCT query and matching values
+(0.81, 0.72, 0.67, 0.49, 0.41). This verifies the candidate read path, not
+Gemini main-chat routing.
+
+Deployment verification, October 4, 2026 (America/New_York): gateway revision
+`oracle-inventory-agent-gateway-00007-xjx` and MCP revision
+`oracle-supply-chain-mcp-gemini-00037-4gd` serve the change. The existing
+connector was reloaded and all four actions enabled. The deployed live
+regression script passed risk-list, catalog, spatial and unknown-SKU checks.
+Risk task `0014023c-f10e-4309-a18e-1220e5505de0` matched Oracle context
+`5C36C8F9-D4F3-807F-E063-6914000ABC32` and successful team execution
+`5C36C8F9-D4F4-807F-E063-6914000ABC32`; its SQL_TOOL history contains the
+DISTINCT risk query and the same five probabilities. Audit timestamps are UTC
+(October 5); this is the same evening as the October 4 local test.
+
+In a fresh Gemini **main chat**, the exact prompt “List SKUs with risk of stock
+outages.” selected **List-inventory-stockout-risks** and produced a five-row
+table plus a metric note. No catalog fan-out, map, graph, transfer dashboard or
+Google Search call appeared in this turn; Google Search was left enabled.
+This is an observed routing test, not a guarantee for every future model response.
+
+![Gemini's compact stockout-risk table, without per-product map cards.](images/gemini-stockout-risk-list.jpg)
+
+The remaining exact demo prompts also passed in the host. Graph SKU-500
+rendered six nodes/five relationships (task
+`d46f1560-5d7e-450e-b599-076a45f64a6b`); finding Houston displayed database
+ID 3001 and its relationships. Spatial SKU-500 rendered three points and one
+schematic connection (task `af15ed54-db35-4640-a1c6-3b74b348246d`); clicking
+DFW displayed `WH-202`, `SOURCE_BUFFER`, score 0.31. The separate
+**Oracle Supply-Chain A2UI** agent returned two recommendations for the exact
+minimum-risk-70/limit-3 prompt, without a “review only” suffix. No approval
+was clicked and no transfer was executed. Gemini's additional prose is not
+audited evidence of causality, surplus stock or approved transfer quantities.
+
+![SKU-500 map after clicking DFW in the four-step host test.](images/gemini-four-step-sku500-map.jpg)
 
 ## Local verification
 
