@@ -22,8 +22,9 @@ For the interactive **Cytoscape.js** graph, see the
 [graph runbook](docs/MCP_APP_ORACLE_AGENT_GRAPH.md). Ask “Use Show-supply-chain-graph
 for SKU-700.” Pan, zoom, drag nodes, change layouts, and click nodes/edges for
 database IDs and relationships. This action returns structured data, not a
-generated picture. It reads the Oracle graph's backing relationship tables
-through the managed agent; it does not claim `GRAPH_TABLE` execution.
+generated picture. The managed agent queries `SC_SUPPLY_CHAIN_GRAPH_V`, whose
+Oracle definition uses SQL/PGQ `GRAPH_TABLE`/`MATCH` on `SUPPLY_CHAIN_GRAPH`,
+not relational joins. See the runbook for setup and independent verification.
 
 ![Cytoscape.js supply-chain graph running in Gemini Enterprise for SKU-700.](docs/images/gemini-cytoscape-sku700.jpg)
 
@@ -42,7 +43,9 @@ model-supplied evidence and has no Toolkit, Google Search or static-data
 fallback. The [gateway rationale and verification guide](docs/MCP_APP_ORACLE_AGENT_SPATIAL.md)
 explain server-side credentials, the stored-grant identity, and why a source
 label/task ID alone is not independent SQL execution proof. Transfers remain
-the separate A2A/A2UI + Toolkit lane; the current Java A2UI flow is draft/review.
+the separate **Oracle Supply-Chain A2UI** agent and Toolkit review/approval
+lane. The older Java inventory-action coordinator is a different, draft-only
+surface. Use the [tested demo sequence](docs/INVENTORY_UI_ARCHITECTURE.md#suggested-demo-sequence).
 
 ![Live SKU-700 MapLibre MCP App in Gemini Enterprise, with source, destination and satellite warehouses.](docs/images/managed-agent-sku700-v6.jpg)
 

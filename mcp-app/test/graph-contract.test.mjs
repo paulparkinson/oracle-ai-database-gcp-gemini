@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GraphEvidence } from "../src/graph-contract.ts";
 const graph = { source: "oracle-ai-database-agent", sku: "SKU-700", status: "DATA", pathRows: 1,
-  scope: "TEST.SUPPLY_CHAIN_GRAPH", taskId: "fixture-task", query: "fixture-query", sourceDetail: "fixture", executionMode: "fixture",
+  scope: "TEST.SUPPLY_CHAIN_GRAPH", taskId: "fixture-task", contextId: "fixture-context", query: "fixture-query", executedSql: "fixture-query", sourceDetail: "fixture", executionMode: "fixture",
   interpretation: "Fixture, not a live database result", nodes: [
     { id: "warehouse:4", databaseId: "4", sku: "SKU-700", kind: "WAREHOUSE", label: "Warehouse" },
     { id: "product:SKU-700", databaseId: "SKU-700", sku: "SKU-700", kind: "PRODUCT", label: "Kit" }],

@@ -12,7 +12,7 @@ Gemini Enterprise inventory app
 │   ├── MCP App: spatial warehouse hotspots
 │   └── MCP App: property-graph dependencies
 └── Decide and act
-    └── A2A inventory-action agent → A2UI review surface
+    └── Oracle Supply-Chain A2UI agent → Toolkit-backed review/approval
 ```
 
 ### MCP Apps: explore
@@ -41,17 +41,17 @@ explanation, recommended transfer, policy result, approval state, and the next
 user action.
 
 ```text
-user asks what to do
-  → A2A inventory-action coordinator
-  → graph, spatial, external, and Oracle database evidence
-  → policy check and transfer draft
+user asks for inventory-transfer recommendations
+  → existing Oracle Supply-Chain A2UI agent via A2A
+  → Java review API → governed Toolkit recommendation query
+  → exact recommendation and short-lived review handle
   → A2UI review controls
   → explicit authenticated approval
   → governed server/database write path
 ```
 
 A2UI is a declarative UI contract, not an orchestration engine. The A2A
-coordinator performs downstream calls and constructs the A2UI messages. The
+adapter calls the review API and constructs the A2UI messages. The
 database remains the final authority for authorization, current-stock
 revalidation, row locking, audit, and the transaction.
 
@@ -68,17 +68,31 @@ validated warehouse rows from seeded Oracle demo tables. See the
 screenshots, gateway rationale, and independent verification limits.
 
 The graph action uses bundled Cytoscape.js and a separate `ui://` resource,
-not a PNG. Its fixed query traverses the property graph's backing relational
-tables through the managed agent, not `GRAPH_TABLE` or local JDBC. See the
+not a PNG. The managed agent reads `SC_SUPPLY_CHAIN_GRAPH_V`, an Oracle view
+traversing `SUPPLY_CHAIN_GRAPH` with SQL/PGQ `GRAPH_TABLE`/`MATCH`, not joins or local JDBC. See the
 [graph runbook](MCP_APP_ORACLE_AGENT_GRAPH.md) for tests, scope and connector
 refresh steps. The toolkit descriptors below remain reference surfaces;
 they do not automatically register this action. The stored Oracle grant identifies the
 gateway's upstream caller; it is not automatic per-Gemini-user delegation.
 
-The Java A2A runtime already returns A2UI v0.8 transfer-review messages. The
-current implementation creates a draft and exposes request-approval/cancel
-intents; it does not yet execute an inventory transfer in Oracle. Do not call
-the current draft flow a completed write path.
+For the demo's decision lane, select the existing **Oracle Supply-Chain A2UI**
+agent in Gemini Enterprise. Its separate GCP service, `oracle-supply-chain-a2ui`,
+returns native A2UI recommendation cards backed by the Oracle Database MCP Java
+Toolkit, with **Approve this exact transfer** and **Cancel review without writing**
+controls. A review prompt does not execute a transfer. This is distinct from
+the older `oracle_inventory_action_agent` on the VM and the draft-only
+`InventoryActionAdkService` in `oracle_agent_java/`; do not confuse those surfaces.
+
+The existing [review/approval API](../agent-service/src/main/java/com/oracle/demo/interactiveai/AgentController.java)
+binds the selected recommendation to a short-lived, single-use review handle.
+The write path is through the Toolkit, not the managed read agent. The current
+demo uses a configured service actor; do not describe it as per-user identity
+delegation or a production authorization audit.
+
+On October 4, 2026, a Gemini host test rendered SKU-500 (500 units,
+DFW-HUB → EWR-HUB) and WATER-SENSE (51 units, ATL-DC → SEA-FC) at minimum
+risk 70. No approval was clicked and no write was tested in this validation.
+Those are dated results, not hardcoded expectations for every run.
 
 The full-stack toolkit seeds the complementary MCP App descriptors:
 
@@ -86,18 +100,18 @@ The full-stack toolkit seeds the complementary MCP App descriptors:
 - `inventory-graph-mcpapp` — interactive dependency exploration
 - `inventory-transfer-a2ui` — A2A/A2UI review surface, with MCP App disabled
 
-## Implementation steps
+## Implementation responsibilities
 
 1. Prepare the governed Oracle inventory, warehouse, graph, and spatial data.
 2. Expose bounded read-only MCP tools for graph and spatial evidence.
 3. Associate those tools with `ui://` MCP App resources and register them with
    an MCP Apps-compatible host.
-4. Expose the inventory-action coordinator through A2A with the A2UI extension
+4. Expose the review adapter through A2A with the A2UI extension
    and the host-approved catalog.
-5. Have the coordinator gather Oracle/graph/spatial evidence, run policy, and
-   return an immutable transfer draft.
+5. Have the review service query governed recommendations and issue an exact,
+   short-lived review handle. Do not infer quantity from a spatial risk score.
 6. Render the draft and approval controls as A2UI.
-7. Add the write path separately: bind approval to the authenticated actor and
+7. Keep the write path separate: bind approval to the authorized actor and
    exact draft, make the approval handle short-lived and single-use, revalidate
    current inventory in Oracle, lock the affected rows, write the transfer and
    audit records in one transaction, and return the committed result.
@@ -112,10 +126,17 @@ The full-stack toolkit seeds the complementary MCP App descriptors:
 2. Enable `Show-supply-chain-graph` on the same connector and ask for SKU-700,
    then SKU-900. Inspect supplier → plant → port → warehouse → product edges
    and alert → port links. This is dependency evidence, not a transfer approval.
-3. Ask the A2A inventory-action agent what action should be taken.
-4. Review the A2UI recommendation, policy explanation, and proposed transfer.
-5. Approve only after the governed write path is installed and verified; until
-   then, demonstrate the draft/review state and say that execution is disabled.
+3. Select **Oracle Supply-Chain A2UI** under Agents. Ask:
+   `Show inventory transfers with a minimum stockout risk of 70, limited to 3 recommendations. Review only; do not approve or execute a transfer.`
+4. Review the native A2UI cards. This service independently queries its Toolkit
+   recommendation dataset; it does not automatically receive the preceding
+   map/graph conversation. Spatial scores do not determine transfer quantities.
+5. For a read-only demo, choose **Cancel review without writing**. Only if you
+   intend an actual database write, inspect the exact SKU, route and quantity,
+   then click **Approve this exact transfer**. Do not use a prose prompt as a
+   substitute for the explicit approval control. Refresh an expired review.
+
+![Existing Oracle Supply-Chain A2UI review in Gemini Enterprise; approval was not clicked.](images/gemini-a2ui-transfer-review.jpg)
 
 Related implementation and workshop material:
 

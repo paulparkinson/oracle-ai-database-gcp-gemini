@@ -130,7 +130,7 @@ public class OracleAiDatabaseAgentClient {
                         "delegate-oracle-ai-database-agent"
                 ),
                 artifacts,
-                taskNode.path("id").asText("")
+                taskNode.path("id").asText(""), taskNode.path("contextId").asText("")
         );
     }
 
@@ -508,6 +508,12 @@ public class OracleAiDatabaseAgentClient {
             String sourceDetail,
             String action,
             List<Artifact> artifacts,
-            String taskId
-    ) {}
+            String taskId,
+            String contextId
+    ) {
+        public RemoteDatabaseResult(String responseText, String executionMode, String sourceDetail,
+                String action, List<Artifact> artifacts, String taskId) {
+            this(responseText, executionMode, sourceDetail, action, artifacts, taskId, "");
+        }
+    }
 }

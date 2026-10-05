@@ -269,7 +269,7 @@ server.registerTool("list-inventory-items", {
 
 registerAppTool(server, "show-supply-chain-graph", {
   title: "Show supply-chain dependency graph",
-  description: "Queries the managed Oracle AI Database Agent server-side for active supply-chain paths and attached alerts from the SC_* relationship tables, then opens an interactive Cytoscape.js MCP App. This is relational traversal of graph backing tables, not GRAPH_TABLE execution. Pass only a SKU; never nodes, edges or evidence. No image generation, Toolkit, direct JDBC, model-payload or static fallback. NO_DATA means no complete paths returned, not absence or safety. Use list-inventory-items for catalog discovery.",
+  description: "Queries the managed Oracle AI Database Agent server-side for SC_SUPPLY_CHAIN_GRAPH_V, an Oracle view executing SQL/PGQ GRAPH_TABLE and MATCH on SUPPLY_CHAIN_GRAPH, then opens an interactive Cytoscape.js MCP App with active supply-chain paths and alerts. Pass only a SKU; never nodes, edges or evidence. No relational-join fallback, image generation, Toolkit, direct JDBC, model-payload or static fallback. Query failures are errors, not NO_DATA. NO_DATA means no complete paths returned, not absence or safety. Use list-inventory-items for catalog discovery.",
   inputSchema: { sku: z.string().min(1).max(40).describe("Product SKU to query") },
   _meta: { ui: { resourceUri: graphResourceUri, visibility: ["model", "app"] } },
   annotations: { readOnlyHint: true, openWorldHint: false }

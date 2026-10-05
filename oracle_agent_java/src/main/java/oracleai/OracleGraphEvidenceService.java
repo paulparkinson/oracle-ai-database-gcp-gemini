@@ -25,7 +25,11 @@ public class OracleGraphEvidenceService {
         String sku = OracleSpatialEvidenceService.normalizeSku(requestedSku);
         String query = query();
         var response = client.answer("Execute this exact read-only SQL using your database query tool: " + query
-                + ". Return ONLY JSON {\"rows\":[...]} with uppercase SQL column names. "
+                + ". This view executes GRAPH_TABLE/MATCH in Oracle. Query the view exactly; never rewrite it as table joins. "
+                + "Return ONLY JSON {\"executedSql\":\"the actual sql_query from the query tool\",\"rows\":[...]} "
+                + "with uppercase SQL column names. Copy sql_query and sql_result from the tool output, not the prompt. "
+                + "Format executedSql on ONE LINE with unquoted uppercase identifiers, retaining aliases from the tool output. "
+                + "Do not put newlines or double-quoted SQL identifiers inside the JSON string. "
                 + "Preserve all product and entity IDs. Do not summarize, invent nodes or edges, "
                 + "infer missing paths, or use examples/static data. "
                 + "Return SQL NULL as JSON null. If the query fails return {\"error\":\"query failed\"}.");
@@ -37,6 +41,9 @@ public class OracleGraphEvidenceService {
         JsonNode root = mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
         if (root == null || root.has("error") || !root.path("rows").isArray())
             throw new IllegalStateException("Managed agent did not return graph query rows");
+        String executedSql = root.path("executedSql").asText("");
+        if (!isRequiredViewQuery(executedSql))
+            throw new IllegalStateException("Managed agent did not report the required property-graph query; no join fallback permitted");
         if (root.path("rows").size() >= 1000)
             throw new IllegalStateException("Graph query exceeds row limit; pagination required");
         Map<String, GraphNode> nodes = new LinkedHashMap<>();
@@ -65,7 +72,7 @@ public class OracleGraphEvidenceService {
         }
         if (nodes.size() > 500 || edges.size() > 1000)
             throw new IllegalStateException("Graph exceeds interactive display limit");
-        String scope = owner + ".SC_* supply-chain vertex and relationship tables (relational joins, not GRAPH_TABLE)";
+        String scope = owner + ".SUPPLY_CHAIN_GRAPH via SC_SUPPLY_CHAIN_GRAPH_V (SQL/PGQ GRAPH_TABLE / MATCH)";
         String interpretation = nodes.isEmpty()
                 ? "No complete active supply-chain paths returned for " + sku + " from " + scope
                     + ". This does not prove the product is absent or its supply chain is safe."
@@ -74,33 +81,48 @@ public class OracleGraphEvidenceService {
                     + "This is a bounded dependency view, not a transfer recommendation or continuous monitoring.";
         return new GraphEvidence("oracle-ai-database-agent", sku, nodes.isEmpty() ? "NO_DATA" : "DATA",
                 List.copyOf(nodes.values()), List.copyOf(edges.values()), pathRows, scope,
-                response.taskId(), query, response.sourceDetail(), response.executionMode(), interpretation);
+                response.taskId(), response.contextId(), query, executedSql, response.sourceDetail(), response.executionMode(), interpretation);
     }
 
-    // Explicit relational traversal of the property graph's backing tables. The managed
-    // profile exposes these tables, not GRAPH_TABLE execution. This is the sole read path,
-    // not an automatic fallback. Keep PRODUCT_ID and filter each row in Java.
+    // The view owns the fixed GRAPH_TABLE/MATCH traversal. The managed agent's
+    // table/view profile cannot mix direct property-graph objects into object_list.
     String query() {
-        return """
-            SELECT s.supplier_id, s.supplier_name, p.plant_id, p.plant_name,
-                   po.port_id, po.port_name, w.warehouse_id, w.warehouse_name,
-                   pr.product_id, pr.product_name, a.alert_id, a.alert_name
-            FROM %1$s.SC_SUPPLIERS s
-            JOIN %1$s.SC_SUPPLIER_PLANT sp ON sp.supplier_id = s.supplier_id AND sp.is_current = CHR(89)
-            JOIN %1$s.SC_PLANTS p ON p.plant_id = sp.plant_id
-            JOIN %1$s.SC_PLANT_PORT pp ON pp.plant_id = p.plant_id AND pp.is_current = CHR(89)
-            JOIN %1$s.SC_PORTS po ON po.port_id = pp.port_id
-            JOIN %1$s.SC_PORT_WAREHOUSE pw ON pw.port_id = po.port_id AND pw.is_current = CHR(89)
-            JOIN %1$s.SC_WAREHOUSES w ON w.warehouse_id = pw.warehouse_id
-            JOIN %1$s.SC_WAREHOUSE_PRODUCT wp ON wp.warehouse_id = w.warehouse_id AND wp.is_current = CHR(89)
-            JOIN %1$s.SC_PRODUCTS pr ON pr.product_id = wp.product_id
-            LEFT JOIN %1$s.SC_ALERT_PORT ap ON ap.port_id = po.port_id AND ap.is_current = CHR(89)
-            LEFT JOIN %1$s.SC_ALERTS a ON a.alert_id = ap.alert_id AND a.active_flag = CHR(89)
-            WHERE s.active_flag = CHR(89) AND p.active_flag = CHR(89) AND po.active_flag = CHR(89)
-              AND w.active_flag = CHR(89) AND pr.active_flag = CHR(89)
-            ORDER BY pr.product_id, s.supplier_id, p.plant_id, po.port_id, w.warehouse_id, a.alert_id
-            FETCH FIRST 1000 ROWS ONLY
-            """.formatted(owner).strip();
+        return "SELECT SUPPLIER_ID, SUPPLIER_NAME, PLANT_ID, PLANT_NAME, PORT_ID, PORT_NAME, "
+                + "WAREHOUSE_ID, WAREHOUSE_NAME, PRODUCT_ID, PRODUCT_NAME, ALERT_ID, ALERT_NAME "
+                + "FROM " + owner + ".SC_SUPPLY_CHAIN_GRAPH_V "
+                + "ORDER BY PRODUCT_ID, SUPPLIER_ID, PLANT_ID, PORT_ID, WAREHOUSE_ID, ALERT_ID "
+                + "FETCH FIRST 1000 ROWS ONLY";
+    }
+
+    // Allow only identity-preserving aliases emitted by Select AI, not arbitrary
+    // semantically similar SQL. Never execute the reported SQL in this gateway.
+    private boolean isRequiredViewQuery(String sql) {
+        String normalized = sql.replaceAll("\"([A-Z][A-Z0-9_]*)\"", "$1").trim();
+        var from = java.util.regex.Pattern.compile("(?i)\\bFROM\\s+" + owner
+                + "\\.SC_SUPPLY_CHAIN_GRAPH_V(?:\\s+([A-Z][A-Z0-9_]*))?\\s+ORDER\\s+BY\\b").matcher(normalized);
+        if (!from.find()) return false;
+        String alias = from.group(1);
+        if (alias != null) {
+            normalized = normalized.substring(0, from.start()) + "FROM " + owner
+                    + ".SC_SUPPLY_CHAIN_GRAPH_V ORDER BY" + normalized.substring(from.end());
+            normalized = normalized.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(alias) + "\\s*\\.\\s*", "");
+        }
+        for (String column : List.of("SUPPLIER_ID", "SUPPLIER_NAME", "PLANT_ID", "PLANT_NAME",
+                "PORT_ID", "PORT_NAME", "WAREHOUSE_ID", "WAREHOUSE_NAME", "PRODUCT_ID",
+                "PRODUCT_NAME", "ALERT_ID", "ALERT_NAME")) {
+            normalized = normalized.replaceAll("(?i)\\b" + column + "\\s+AS\\s+" + column + "\\b", column);
+        }
+        return normalizeSql(query()).equals(normalizeSql(normalized));
+    }
+
+    // Only formatting differences are allowed. This is an agent-reported SQL check,
+    // not a signed database receipt; independent Oracle diagnostics remain necessary.
+    private static String normalizeSql(String sql) {
+        return java.util.regex.Pattern.compile("'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|[^'\"]+").matcher(sql).results()
+                .map(m -> m.group().startsWith("'") ? m.group()
+                    : m.group().startsWith("\"") ? m.group().replaceAll("^\"([A-Z][A-Z0-9_]*)\"$", "$1")
+                    : m.group().replaceAll("\\s+", "").toUpperCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.joining()).replaceAll(";+$", "");
     }
 
     private static String node(Map<String, GraphNode> nodes, JsonNode row, String sku, String kind) {
@@ -132,6 +154,6 @@ public class OracleGraphEvidenceService {
     // Edge ID is a stable UI relationship key, NOT an Oracle edge-table primary key.
     public record GraphEdge(String id, String sku, String source, String target, String kind) {}
     public record GraphEvidence(String source, String sku, String status, List<GraphNode> nodes,
-            List<GraphEdge> edges, int pathRows, String scope, String taskId, String query,
+            List<GraphEdge> edges, int pathRows, String scope, String taskId, String contextId, String query, String executedSql,
             String sourceDetail, String executionMode, String interpretation) {}
 }

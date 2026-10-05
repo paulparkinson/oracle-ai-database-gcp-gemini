@@ -1,114 +1,142 @@
-# Managed Oracle agent → interactive Cytoscape.js graph
+# Managed Oracle property graph → Cytoscape.js MCP App
 
-The `show-supply-chain-graph` MCP tool accepts **only a SKU**. It fetches fresh
-managed-agent evidence server-side and opens a bundled Cytoscape.js MCP App.
-It does not generate a picture or accept nodes/edges supplied by Gemini.
+`show-supply-chain-graph` accepts **only a SKU**, obtains fresh evidence through
+the managed Oracle AI Database Agent, and renders a bundled interactive
+Cytoscape.js graph. It does not generate a picture or accept Gemini-supplied
+nodes, edges or source claims.
 
 ```text
-Gemini Enterprise → same Oracle Supply-Chain MCP App connector
+Gemini Enterprise → existing Oracle Supply-Chain MCP App connector
   → show-supply-chain-graph(sku) → Java gateway
     → server-side OAuth → managed Oracle AI Database Agent via A2A/private relay
-      → SC_* relationship query → validated rows → typed nodes/edges
-        → ui://oracle-supply-chain/supply-chain-graph-v1 → Cytoscape.js
+      → SC_SUPPLY_CHAIN_GRAPH_V → GRAPH_TABLE / MATCH on SUPPLY_CHAIN_GRAPH
+        → validated rows → typed nodes/edges → Cytoscape.js MCP App
 ```
 
-## Query scope and interpretation
+## Database graph and query
 
-This is an explicit **relational traversal of the property graph's backing
-tables**, not verified `GRAPH_TABLE` execution. During development the managed
-agent rewrote a simple GRAPH_TABLE request and failed the full graph-pattern
-request. The supported implementation therefore explicitly requests the
-SC_* table joins exposed by the existing managed-agent profile. There is no
-automatic alternate data path, no direct JDBC query, and no database/profile
-change is required by this application update.
+The query is SQL/PGQ over the **property graph**, not joins over its backing
+tables. The graph is defined in [setup_supply_chain_graph_schema.sql](../sql/setup_supply_chain_graph_schema.sql).
+The fixed graph traversal is in
+[create_managed_agent_graph_view.sql](../sql/create_managed_agent_graph_view.sql).
+The managed agent reads that Oracle view using
+[OracleGraphEvidenceService.query()](../oracle_agent_java/src/main/java/oracleai/OracleGraphEvidenceService.java).
+The view is not cached/materialized: Oracle evaluates the graph at query time.
 
-`OracleGraphEvidenceService.query()` is the canonical requested SQL. It joins
-SC_SUPPLIERS → SC_SUPPLIER_PLANT → SC_PLANTS → SC_PLANT_PORT → SC_PORTS →
-SC_PORT_WAREHOUSE → SC_WAREHOUSES → SC_WAREHOUSE_PRODUCT → SC_PRODUCTS,
-with optional SC_ALERT_PORT/SC_ALERTS. Only active vertices/current relationships
-are requested. CHR(89) expresses the schema's Y flag without embedded quoted
-literals. PRODUCT_ID is retained on every row and filtered in Java.
+It matches two patterns:
 
-- Relationships: SUPPLIES, SHIPS_VIA, ROUTES_TO, STOCKS and optional AFFECTS.
-- Nodes preserve database IDs and names. Edge keys identify distinct typed
-  relationships for the UI; they are **not Oracle edge-table primary keys**.
-- Exact duplicates collapse; conflicting identities, missing fields, invalid
-  JSON, missing task IDs and oversized results fail closed. At 1,000 rows the
-  result is rejected because the upstream SQL tool caps rows at 1,000; it must
-  not be presented as complete. The UI is limited to 500 nodes/1,000 edges.
-- NO_DATA means no complete active path in this query, **not** no product,
-  no upstream dependencies, or a safe supply chain. Catalog membership alone
-  does not establish a graph path.
-- These are live reads of seeded Oracle demo tables, not production telemetry.
-  Layout, dragging and zooming only inspect the returned result. Ask again for
-  a new read. No transfer, inventory write or monitoring is performed.
+- Active supplier → plant → port → warehouse → product, using current
+  SUPPLIES, SHIPS_VIA, ROUTES_TO and STOCKS edges.
+- The same path plus an active alert → port AFFECTS edge.
 
-## Run it in Gemini Enterprise
+`UNION ALL` retains paths without alerts without requiring `OPTIONAL MATCH`.
+A path with an alert appears in both branches; `pathRows` counts returned
+rows, not unique paths. The UI deduplicates nodes and typed relationships.
+The query retains every PRODUCT_ID; Java selects the requested SKU.
 
-1. Deploy the gateway and MCP server as below. Use the existing **Oracle
-   Supply-Chain MCP App** connector; do not create a second connector.
-2. In its **Actions** tab choose **Reload custom actions**, then enable
-   **Show-supply-chain-graph** alongside catalog and spatial actions. Keep the
-   transfer dashboard disabled. Start a fresh chat with this connector enabled.
-3. Try these prompts:
+The managed agent is asked to return view rows and report its query tool's
+`sql_query` as single-line `executedSql`. The gateway rejects missing/different SQL,
+including join-based rewrites. Whitespace, unquoted letter case, uppercase
+identifier quoting, identity-preserving table/column aliases and a terminal
+semicolon are normalized; literal values are preserved. **This comparison is
+an agent-report check, not a signed Oracle execution receipt.**
+
+Other validation boundaries:
+
+- Database IDs and names are preserved; edge IDs are stable UI relationship
+  keys, not Oracle edge-table primary keys.
+- Conflicting identities, missing fields/task IDs and invalid JSON fail closed.
+- At 1,000 rows the response is rejected because the upstream SQL tool caps
+  results at 1,000. Display limits are 500 nodes and 1,000 edges.
+- NO_DATA means no complete active path returned for that SKU, not no product,
+  a safe supply chain or continuous monitoring.
+- Reads query seeded Oracle demo data at request time, not production telemetry.
+- No Toolkit, direct JDBC, relational-join, static-data or host-payload fallback.
+
+## Configure the managed agent
+
+Use SQLcl on the existing GCP VM/private network as the application schema
+owner. First inspect the **actual active profile**, which can differ from
+`.env` or an older setup script:
+
+```sql
+SELECT value AS active_profile
+FROM selectai_agent_config
+WHERE agent = 'ORACLE_AI_DATABASE_AGENT' AND key = 'AGENT_AI_PROFILE';
+
+SELECT object_name, object_type, status
+FROM user_objects
+WHERE object_name = 'SUPPLY_CHAIN_GRAPH';
+
+SELECT profile_name, attribute_name, attribute_value
+FROM user_cloud_ai_profile_attributes
+WHERE profile_name = (
+  SELECT value FROM selectai_agent_config
+  WHERE agent = 'ORACLE_AI_DATABASE_AGENT' AND key = 'AGENT_AI_PROFILE')
+AND attribute_name IN ('object_list', 'model', 'provider');
+```
+
+The graph must be VALID. **Do not add it directly to the shared table/view
+profile:** Oracle rejects mixed property-graph and table/view object lists
+with ORA-20000. Instead, expose the narrowly scoped graph-backed view through
+the existing SQL tool. This preserves catalog/spatial reads without switching
+profiles between concurrent requests. A separate graph-only Select AI profile
+is another supported pattern, but is not used by this implementation.
+
+With authorization, run from the application checkout on the GCP VM:
+
+```sql
+@sql/create_managed_agent_graph_view.sql
+@sql/enable_managed_agent_graph_view.sql
+```
+
+The first script creates FINANCIAL.SC_SUPPLY_CHAIN_GRAPH_V and deliberately
+refuses to replace an existing object; if already installed, verify its
+USER_VIEWS definition rather than rerunning CREATE. The second idempotently
+adds only that view to the active profile, preserving existing entries,
+profile selection, model and credentials. Capture its printed previous list
+in a protected operator log outside Git. Neither script modifies inventory,
+replaces the graph or grants new user privileges.
+
+For rollback, first restore the previous application revisions, then use
+`DBMS_CLOUD_AI.SET_ATTRIBUTE` to restore the captured `object_list` on the
+captured profile. Check for intervening configuration changes before restoring;
+do not overwrite another administrator's additions. The unused read-only view
+can remain after rollback; removing it is a separate, explicitly scoped DDL action.
+
+## Use in Gemini Enterprise
+
+1. Deploy the gateway and MCP server, then open the existing **Oracle
+   Supply-Chain MCP App → Actions** in the GCP console.
+2. Choose **Reload custom actions**, enable **Show-supply-chain-graph**
+   alongside catalog/spatial actions, and start a fresh chat. No second
+   connector or separate graph OAuth client is required.
+3. Try:
 
 | Prompt | Check |
 | --- | --- |
-| `Use List-inventory-items to list the managed Oracle inventory catalog and its scope.` | Discover current product IDs; do not assume every product has graph evidence. |
-| `Use Show-supply-chain-graph for SKU-500.` | Interactive dependency graph, not a PNG. |
-| `Use Show-supply-chain-graph for SKU-700. Explain only the returned nodes and relationships.` | A different product/path; inspect supplier and alert IDs. |
-| `Show the supply-chain dependency graph for SKU-900 using Show-supply-chain-graph.` | Another managed-agent request/task ID and product-specific nodes. |
-| `Use Show-supply-chain-graph for SKU-501. Do not substitute another product if no data exists.` | Explicit NO_DATA; no invented graph. |
+| `Use List-inventory-items to list the managed Oracle inventory catalog and its scope.` | Discover current IDs; catalog membership alone does not imply a graph path. |
+| `Use Show-supply-chain-graph for SKU-500.` | Interactive graph, not a generated PNG. |
+| `Use Show-supply-chain-graph for SKU-700. Explain only returned relationships.` | Different product/path; inspect supplier and alert IDs. |
+| `Use Show-supply-chain-graph for SKU-900.` | Fresh task ID and product-specific nodes. |
+| `Use Show-supply-chain-graph for SKU-501. Do not substitute another product.` | NO_DATA if no complete active path exists. |
 
-4. Click a node for its Oracle ID/name/type and adjacent relationships. Click
-   an edge for its endpoints/type. Drag a node, pan the background, zoom, choose
-   another layout, search by node name/ID/type, then **Fit graph**.
+Click nodes/edges for details, drag nodes, pan/zoom, change layout, search by
+name/ID/type, and choose **Fit graph**. These are view operations; ask again
+for another Oracle read.
 
-![Real managed-agent SKU-700 result rendered in the browser protocol test host, with selected supplier details.](images/managed-agent-graph-sku700.png)
+![Cytoscape.js graph inside Gemini Enterprise.](images/gemini-cytoscape-sku700.jpg)
 
-*Actual browser screenshot, October 4, 2026: live Oracle-agent result in a local
-MCP protocol test host, not a mock graph and not a Gemini Enterprise screenshot.*
+The screenshot illustrates the interactive UI; it is not proof of which SQL
+executed. Use the checks below for query provenance.
 
-![Managed-agent no-data response for SKU-501; no graph or invented replacement is displayed.](images/managed-agent-graph-no-data.png)
+## Build, deploy and test the GCP services
 
-## Build, test and deploy
+The [managed-read runbook](MCP_APP_ORACLE_AGENT_SPATIAL.md) covers the existing
+OAuth secrets, private relay, gateway configuration and token renewal. The
+graph uses the same configured gateway origin and Oracle identity as the map.
 
-### Verified deployment, October 4, 2026
-
-- Existing GCP gateway revision: `oracle-inventory-agent-gateway-00004-shb`.
-- Existing MCP revision: `oracle-supply-chain-mcp-gemini-00035-4xg`.
-- The same connector now has all three read actions enabled; no new connector.
-- Deployed browser-protocol tests passed for SKU-500 (task
-  `dbef82fa-4ea3-4670-8218-37b05f4a8a56`), SKU-700
-  (`3a5db924-bbda-4542-a78b-b4116438c994`) and SKU-501 NO_DATA
-  (`b23b0fe2-f38e-4798-be37-5dece7d42db4`). SKU-900 also passed through the
-  local gateway using the live managed agent, not a fixture.
-- Gemini Enterprise itself rendered SKU-700, task
-  `804e27c7-7149-4d0e-a346-e7529682c1c6`, with Google Search disabled. Search,
-  Fit graph and a real DFW Hub node click were verified; DFW returned ID 4002
-  with ROUTES_TO/STOCKS relationships. The broader pan/zoom/drag/layout/edge
-  interaction checks passed in the automated browser protocol host.
-- Deployed catalog and spatial regression checks passed for SKU-500, SKU-700,
-  SKU-APAC-210 and the SKU-501/GRID-CTRL no-data cases.
-- Java tests: 13 passed. MCP contract/concurrency/failure tests: 3 passed.
-  No independent Oracle-side SQL audit correlation was performed in this run.
-- Dependency audit reported four existing production transitive advisories
-  (one high, three moderate: fast-uri, hono, ip-address, qs). No claim of a
-  security-clean or production-hardened deployment is made; review/update
-  those dependencies and public ingress before production use.
-
-![Existing Oracle connector with catalog, spatial and graph actions enabled.](images/managed-agent-three-actions.jpg)
-
-![Actual Cytoscape graph inside Gemini Enterprise for SKU-700.](images/gemini-cytoscape-sku700.jpg)
-
-### Reproduce the tests
-
-Use Java 21/Maven, Node 20.19+ or 22.12+, and Chrome for the browser test. Follow
-the [existing OAuth/local gateway setup](MCP_APP_ORACLE_AGENT_SPATIAL.md#local-verification)
-first. OAuth client credentials and the refresh grant stay server-side; never
-put them in the MCP resource, tool arguments, screenshots or Git.
-
-From the application repository root:
+From the application checkout:
 
 ```bash
 cd oracle_agent_java
@@ -118,75 +146,98 @@ npm ci --ignore-scripts
 npm run typecheck
 npm run build
 node --import tsx --test test/graph-contract.test.mjs test/concurrent-requests.test.mjs
-```
-
-With the configured Java gateway listening on 18090, start MCP in another shell:
-
-```bash
-cd mcp-app
-ORACLE_SPATIAL_EVIDENCE_URL=http://127.0.0.1:18090/api/inventory/spatial-hotspots \
-MCP_WRITES_ENABLED=false MCP_BIND_HOST=127.0.0.1 PORT=13001 npm run serve
-```
-
-The graph endpoint uses the **same configured gateway origin**; no second
-credential or graph connector is needed. Test raw evidence and actual UI:
-
-```bash
-curl --fail-with-body --max-time 150 \
-  'http://127.0.0.1:18090/api/inventory/supply-chain-graph?sku=SKU-700'
-cd mcp-app
-node test/graph-ui.mjs http://127.0.0.1:13001/mcp SKU-700 /tmp/graph-sku700.png
-node test/graph-ui.mjs http://127.0.0.1:13001/mcp SKU-900
-node test/graph-ui.mjs http://127.0.0.1:13001/mcp SKU-501 /tmp/graph-no-data.png
-```
-
-The Java/contract tests use labeled fixtures. The browser script calls the real
-MCP server and loads its real resource in a minimal protocol host under a
-no-network CSP, then checks pan/zoom/drag/layout/search/node-and-edge details.
-It is **not** a substitute for a Gemini Enterprise host test.
-
-After tests, deploy from the repo root (requires authorization to update the
-existing Cloud Run services and the existing Secret Manager prerequisites):
-
-```bash
+cd ..
 ./deploy/gcp/deploy-oracle-agent-and-mcp-app.sh
 ```
 
-The script builds both images, updates the existing gateway/MCP services and
-prints their URLs. `.gcloudignore` excludes local secrets/build artifacts;
-MCP dependencies are installed from the lockfile. Repeat the browser commands
-with the printed HTTPS MCP URL, then reload/enable the connector action above.
-The deployment retains public demo ingress; production requires caller
-authorization. Stored upstream OAuth is not automatic per-user delegation.
+Use Java 21 and Node.js 20.19+ or 22.12+. Deployment requires authorization and
+updates the existing Cloud Run services; it does not execute database writes.
+The script prints the gateway and MCP service URLs. Test those HTTPS services:
 
-## Verify the source, not just the picture
+```bash
+export GATEWAY_URL='https://YOUR_GATEWAY_SERVICE'
+export MCP_URL='https://YOUR_MCP_SERVICE/mcp'
+curl --fail-with-body --max-time 150 \
+  "$GATEWAY_URL/api/inventory/supply-chain-graph?sku=SKU-700"
+node mcp-app/test/graph-ui.mjs "$MCP_URL" SKU-700 /tmp/graph-sku700.png
+node mcp-app/test/graph-ui.mjs "$MCP_URL" SKU-900
+node mcp-app/test/graph-ui.mjs "$MCP_URL" SKU-501 /tmp/graph-no-data.png
+node mcp-app/test/live-evidence.mjs "$MCP_URL"
+```
 
-Follow the [three-level provenance procedure](MCP_APP_ORACLE_AGENT_SPATIAL.md#verify-provenance-not-just-a-working-map).
-The host must invoke `Show-supply-chain-graph`; a `Load Skill` or Google Search
-event does not establish a database read. Check the raw result's `sku`, node
-database IDs, typed edges, `scope`, `taskId`, `executionMode` and requested
-`query`. Check the server's authenticated A2A path and compare rows with an
-authorized independent Oracle read/audit when stronger proof is required.
-The managed agent itself uses an LLM; schema validation cannot make its text
-output a signed SQL execution receipt. A task ID proves correlation, not SQL
-execution by itself. Do not relabel source strings to manufacture provenance.
+Java/contract tests use fixtures. The browser test fetches real MCP evidence
+and the bundled resource from the deployed service, then checks interaction
+in an isolated protocol test harness. It does not replace a Gemini host test.
+Cytoscape requires no CDN/API key or external network access for rendering.
 
-If OAuth, the managed query, JSON validation or host connection fails, report
-that failure. Do not render previous results, Toolkit data, Gemini-invented
-nodes or static examples. A 502 alone does not diagnose a database outage.
+## Verify the source and actual query
 
-## Implementation and cleanup
+1. Expand Gemini's trace: expect **Show-supply-chain-graph**. Disable Google
+   Search for an isolated test. Skill loading and narration do not query Oracle.
+2. Record the deployed revision, request time, SKU, scope, A2A task ID, node IDs,
+   requested `query`, agent-reported `executedSql` and Oracle `contextId`. The gateway authenticates
+   its call to the managed Oracle agent; Gemini only supplies the SKU.
+3. Independently execute the canonical read-only GRAPH_TABLE query through an
+   authorized SQLcl session on the GCP VM and compare returned IDs/relationships.
+4. Correlate `contextId` with `USER_AI_AGENT_TEAM_HISTORY.CONVERSATION_ID`,
+   then use its `TEAM_EXEC_ID` to inspect `USER_AI_AGENT_TOOL_HISTORY.OUTPUT`
+   for `SQL_TOOL`. The nested JSON `result` contains `sql_query` and `sql_result`.
+   Confirm successful view SQL and the actual returned IDs; `status=success`
+   alone can wrap an error. Verify `USER_VIEWS.TEXT` contains the canonical
+   GRAPH_TABLE/MATCH definition. Use the read-only
+   [verification script](../sql/verify_managed_graph_read.sql).
+   A task ID is not the Oracle team execution ID. These Oracle-side records
+   independently establish this path; they are not a cryptographic attestation.
 
-- Java: `OracleGraphEvidenceService`, `/api/inventory/supply-chain-graph`.
-- MCP: `server.ts`, `src/graph-contract.ts`, `src/graph-app.ts`, `graph-app.html`.
-- Cytoscape.js is bundled with the resource; no CDN/API key/network connection
-  is needed for graph rendering. See [Cytoscape.js documentation](https://js.cytoscape.org/).
-- The old spatial Java2D/JTS picture generator, seeded fallback and three
-  bundled basemap GeoJSON files were removed; Git history retains them.
-- Legacy `/graph` A2A image/payload examples remain compatibility code, entirely
-  separate from this action. Do not use them as managed-MCP provenance evidence.
-- Transfer review remains the A2A/A2UI lane; the current Java implementation is
-  draft/review, not a tested inventory write. Removing the seeded spatial
-  helper also removes its invented transfer quantity: the deterministic action
-  path now returns insufficient-transfer-evidence when no governed quantity
-  and endpoints are available, rather than manufacturing a draft.
+Authentication, query, response-validation and host errors must remain errors,
+not NO_DATA or substitute graphs. A 502 alone does not diagnose a database outage.
+
+## Validation record
+
+On October 4, 2026, an independent FINANCIAL connection verified the existing
+SUPPLY_CHAIN_GRAPH was VALID. The canonical GRAPH_TABLE/MATCH query returned
+six rows (base path plus alert path for SKU-500, SKU-700 and SKU-900).
+The active profile was PAULPARK_SUPPLY_CHAIN_GEMINI37_TRIAL. An authorized
+attempt to append the direct graph failed Oracle's mixed-object restriction;
+that addition was immediately rolled back, restoring the original 15 entries.
+With subsequent authorization, SC_SUPPLY_CHAIN_GRAPH_V was created and added
+as the 16th profile entry. Both graph and view are VALID; the existing 15
+entries, Google provider and gemini-3.7-flash model were preserved.
+
+The predeployment SKU-900 request returned six nodes, five typed edges and two
+path rows (task `cb641e12-2f5c-4087-9e54-5ae7e606fbc1`). Its Oracle context
+`5C71F7E4-2AC0-2EE1-E063-6914000A6D81` matched team execution
+`5C71F7E4-2AC1-2EE1-E063-6914000A6D81` at 23:48:23 UTC. Independent SQLcl
+inspection found successful SQL_TOOL output selecting the view and all six
+database rows; the SKU-900 IDs and relationships agreed with the gateway.
+The agent normalized its reported SQL rather than preserving the exact
+Oracle tool formatting/aliases, which is why the independent history matters.
+
+Deployed revisions `oracle-inventory-agent-gateway-00006-fk2` and
+`oracle-supply-chain-mcp-gemini-00036-wlm` serve this implementation. The existing
+Gemini connector's three actions were reloaded; no new connector was created.
+Sixteen Java tests and three MCP contract/concurrency tests passed. Deployed
+catalog/spatial regression checks passed, as did interactive graph tests for
+SKU-700 and SKU-900 (six nodes/five edges each), and SKU-501 (NO_DATA).
+
+The actual Gemini SKU-700 host test, pictured above, returned task
+`c32dedc8-6fb4-4ab9-9d5a-d30828996402` and context
+`5C71F7E4-2B19-2EE1-E063-6914000A6D81`. An independent Oracle session matched
+that context to successful team execution `5C71F7E4-2B1A-2EE1-E063-6914000A6D81`
+at 23:55:36 UTC on October 4. Its SQL_TOOL output selected the graph-backed
+view and returned the matching Atlas Components/Austin Assembly/Savannah/DFW
+Hub/Low Carbon Kit 700/Customs Hold IDs. This verifies the host request against
+Oracle-side history, rather than trusting Gemini narration or a source label.
+
+## Architecture and scope
+
+For transfer recommendations use the separate **Oracle Supply-Chain A2UI**
+Gemini agent, whose Toolkit-backed review/approval flow is described in the
+[two-lane demo](INVENTORY_UI_ARCHITECTURE.md). The older Java inventory-action
+coordinator is draft-only. Exploration remains read-only. The legacy `/graph` A2A
+image/payload examples are separate compatibility code and are never called by
+this MCP action. The obsolete spatial Java2D/JTS generator was removed.
+
+Secrets and refresh grants stay server-side. Stored-grant identity is not
+automatic per-Gemini-user delegation. Public demo ingress and existing
+dependency advisories still require review before production deployment.

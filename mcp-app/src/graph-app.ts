@@ -18,8 +18,8 @@ app.ontoolresult = result => {
     const graph = GraphEvidence.parse(result.structuredContent);
     el("title").textContent = `Supply-chain dependencies · ${graph.sku}`;
     el("summary").textContent = graph.interpretation;
-    el("provenance").textContent = `${graph.source} · ${graph.scope} · A2A task ${graph.taskId}`;
-    el("query").textContent = graph.query;
+    el("provenance").textContent = `${graph.source} · ${graph.scope} · A2A task ${graph.taskId} · Oracle context ${graph.contextId || "not returned"}`;
+    el("query").textContent = `Agent-reported SQL (validated against requested SQL; not a signed database receipt):\n${graph.executedSql}`;
     if (graph.status === "NO_DATA") {
       el("status").textContent = "No complete active paths returned. Supply-chain risk is unknown.";
       return;

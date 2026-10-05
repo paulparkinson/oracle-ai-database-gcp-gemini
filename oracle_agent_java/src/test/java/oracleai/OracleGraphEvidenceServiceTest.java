@@ -18,8 +18,10 @@ class OracleGraphEvidenceServiceTest {
           """.formatted(sku, sku, supplier, alert);
     }
     private void response(String rows) throws Exception {
+        var json = new ObjectMapper().readTree(rows);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) json).put("executedSql", service.query());
         when(client.answer(anyString())).thenReturn(new OracleAiDatabaseAgentClient.RemoteDatabaseResult(
-            rows, "remote-a2a", "test fixture", "query", List.of(), "test-task"));
+            json.toString(), "remote-a2a", "test fixture", "query", List.of(), "test-task"));
     }
     @Test void buildsTypedDeduplicatedGraphWithPerProductIdentity() throws Exception {
         String row = row("SKU-700", "Supplier", "\"ALERT_ID\":5,\"ALERT_NAME\":\"Weather\"");
@@ -29,7 +31,9 @@ class OracleGraphEvidenceServiceTest {
         assertTrue(g.nodes().stream().allMatch(n -> n.sku().equals("SKU-700")));
         assertTrue(g.edges().stream().anyMatch(e -> e.source().equals("alert:5") && e.target().equals("port:3")));
         assertEquals("test-task", g.taskId());
-        verify(client).answer(contains("FINANCIAL.SC_SUPPLIER_PLANT"));
+        verify(client).answer(contains("FINANCIAL.SC_SUPPLY_CHAIN_GRAPH_V"));
+        assertFalse(g.query().contains("JOIN"));
+        assertEquals(g.query(), g.executedSql());
     }
     @Test void noAlertDoesNotInventAnAlert() throws Exception {
         response("{\"rows\":[" + row("SKU-700", "Supplier", "\"ALERT_ID\":null,\"ALERT_NAME\":null") + "]}");
@@ -47,7 +51,7 @@ class OracleGraphEvidenceServiceTest {
             + row("SKU-700", "Two", "\"ALERT_ID\":null,\"ALERT_NAME\":null") + "]}");
         assertThrows(IllegalStateException.class, () -> service.fetch("SKU-700"));
         for (String invalid : List.of("{\"rows\":[{\"PRODUCT_ID\":\"SKU-700\"}]}", "{\"error\":\"query failed\"}",
-                "{\"rows\":[]} trailing prose", "{\"rows\":[" + row("SKU-700", "Supplier", "\"ALERT_ID\":null,\"ALERT_NAME\":\"Ghost\"") + "]}")) {
+                "{\"rows\":[" + row("SKU-700", "Supplier", "\"ALERT_ID\":null,\"ALERT_NAME\":\"Ghost\"") + "]}")) {
             response(invalid); assertThrows(Exception.class, () -> service.fetch("SKU-700"));
         }
     }
@@ -60,5 +64,38 @@ class OracleGraphEvidenceServiceTest {
     }
     @Test void invalidSkuNeverReachesAgent() {
         assertThrows(IllegalArgumentException.class, () -> service.fetch("SKU'; DELETE")); verifyNoInteractions(client);
+    }
+    @Test void acceptsOnlyIdentityPreservingSelectAiAliases() throws Exception {
+        String aliased = service.query().replace("SUPPLIER_ID, SUPPLIER_NAME", "g.\"SUPPLIER_ID\" AS \"SUPPLIER_ID\", g.\"SUPPLIER_NAME\" AS \"SUPPLIER_NAME\"")
+                .replace("SC_SUPPLY_CHAIN_GRAPH_V ORDER", "SC_SUPPLY_CHAIN_GRAPH_V g ORDER");
+        for (String sql : List.of(aliased, service.query().toLowerCase())) {
+            var payload = new ObjectMapper().createObjectNode().put("executedSql", sql);
+            payload.putArray("rows");
+            String raw = payload.toString();
+            when(client.answer(anyString())).thenReturn(new OracleAiDatabaseAgentClient.RemoteDatabaseResult(
+                raw, "remote-a2a", "test", "query", List.of(), "test-task"));
+            assertEquals("NO_DATA", service.fetch("SKU-501").status());
+        }
+    }
+    @Test void rejectsRewrittenOrMissingExecutedGraphSqlAndTrailingText() throws Exception {
+        for (String raw : List.of("{\"rows\":[]}",
+                "{\"rows\":[],\"executedSql\":\"SELECT * FROM FINANCIAL.SC_PRODUCTS\"}",
+                "{\"rows\":[]} trailing prose")) {
+            when(client.answer(anyString())).thenReturn(new OracleAiDatabaseAgentClient.RemoteDatabaseResult(
+                raw, "remote-a2a", "test", "query", List.of(), "test-task"));
+            assertThrows(Exception.class, () -> service.fetch("SKU-700"));
+        }
+    }
+    @Test void rejectsQueryShapeChangesEvenWithValidRowsEnvelope() throws Exception {
+        for (String sql : List.of(service.query().replace("FROM", "FROM OTHER_TABLE JOIN"),
+                service.query().replace("ORDER BY", "WHERE PRODUCT_ID = 'SKU-700' ORDER BY"),
+                service.query().replace("1000", "10"),
+                service.query().replaceFirst("SUPPLIER_ID", "PLANT_ID AS SUPPLIER_ID"))) {
+            var payload = new ObjectMapper().createObjectNode().put("executedSql", sql);
+            payload.putArray("rows");
+            when(client.answer(anyString())).thenReturn(new OracleAiDatabaseAgentClient.RemoteDatabaseResult(
+                payload.toString(), "remote-a2a", "test", "query", List.of(), "test-task"));
+            assertThrows(IllegalStateException.class, () -> service.fetch("SKU-700"));
+        }
     }
 }

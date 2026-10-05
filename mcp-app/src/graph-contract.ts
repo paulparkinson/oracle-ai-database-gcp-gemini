@@ -11,8 +11,9 @@ const pairs = { SUPPLIES: ["SUPPLIER", "PLANT"], SHIPS_VIA: ["PLANT", "PORT"],
 export const GraphEvidence = z.object({
   source: z.literal("oracle-ai-database-agent"), sku: text,
   status: z.enum(["DATA", "NO_DATA"]), nodes: z.array(node).max(500), edges: z.array(edge).max(1000),
-  pathRows: z.number().int().min(0).max(1000), scope: z.string().min(1), taskId: text,
-  query: z.string().min(1), sourceDetail: z.string(), executionMode: z.string(), interpretation: z.string()
+  pathRows: z.number().int().min(0).max(1000), scope: z.string().min(1), taskId: text, contextId: z.string(),
+  query: z.string().min(1), executedSql: z.string().min(1),
+  sourceDetail: z.string(), executionMode: z.string(), interpretation: z.string()
 }).superRefine((g, ctx) => {
   const invalid = (message: string) => ctx.addIssue({ code: "custom", message });
   const ids = new Map(g.nodes.map(n => [n.id, n]));

@@ -37,8 +37,8 @@ tool/schema changes, then start a fresh chat. Try:
 - “Show the supply-chain dependency graph for SKU-900 and describe only its returned relationships.”
 
 The [graph runbook](../docs/MCP_APP_ORACLE_AGENT_GRAPH.md) covers the exact query
-scope, interactive checks and screenshots. The graph reads relationship tables
-through the managed agent, not `GRAPH_TABLE`, Toolkit or direct JDBC. Cytoscape
+scope, interactive checks and screenshots. The managed agent reads an Oracle
+view implementing `GRAPH_TABLE`/`MATCH`, not relational joins, Toolkit or direct JDBC. Cytoscape
 is bundled: no CDN, tile provider, generated image or browser OAuth is involved.
 
 ![Verified SKU-700 map with source, destination and satellite warehouses.](../docs/images/managed-agent-sku700-v6.jpg)

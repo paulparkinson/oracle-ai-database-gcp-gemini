@@ -63,8 +63,12 @@ risk unknown in this view, not safety or absence from every table. Preserve
 per-row product/warehouse IDs; hotspot scores are 0–1, not probabilities.
 Connections are schematic, not optimized routes or transfer recommendations.
 Pan/zoom/click inspects a result; a new tool call is needed to query again.
-Graph reads traverse the property graph's backing SC_* relationship tables
-through managed-agent SQL; do not claim GRAPH_TABLE execution. Nodes and edges
+Graph reads use SC_SUPPLY_CHAIN_GRAPH_V, whose Oracle definition executes
+GRAPH_TABLE/MATCH on SUPPLY_CHAIN_GRAPH, not joins. A Select AI profile cannot
+mix graph objects with table/view objects; expose the graph-backed view in the
+shared table/view profile instead. Audit the actual active profile, not just .env.
+Request authorization before live schema/profile changes; preserve existing entries,
+model and credentials. Reject missing or rewritten agent-reported view SQL. Nodes and edges
 must preserve database identity, product scope and typed relationships. The
 graph action never invokes the legacy A2A PNG/payload renderer. Do not infer
 missing links, fabricate alerts or equate catalog membership with a complete
@@ -73,14 +77,23 @@ dependency path. A NO_DATA graph is unknown, not evidence of safety.
 For provenance, distinguish host tool trace, authenticated server/A2A call,
 and independent Oracle-side query/audit evidence. `Load Skill`, Google Search,
 source labels and task IDs alone do not prove SQL execution. The returned
-`query` is requested SQL, not a signed execution receipt. Follow the runbook's
+`query` is requested SQL; `executedSql` is agent-reported/normalized tool SQL,
+not a signed execution receipt. Correlate `contextId` (not taskId) to Oracle
+USER_AI_AGENT_TEAM_HISTORY.CONVERSATION_ID, then inspect SQL_TOOL OUTPUT by
+TEAM_EXEC_ID. Check the nested result's SQL/rows and the view's GRAPH_TABLE
+definition. Follow the runbook's
 live checks and authorized read-only comparison; disclose missing audit
 correlation instead of claiming full proof. Never modify data just to prove
 liveness without separate approval.
 
-The current Java transfer implementation creates a draft and A2UI review
-messages; it does not yet execute an Oracle inventory write. Preserve that
-boundary in code and documentation unless a real, tested write path is added.
+Distinguish transfer services: `oracle_agent_java/InventoryActionAdkService`
+is draft-only, but the existing **Oracle Supply-Chain A2UI** Gemini agent uses
+the separate `oracle-supply-chain-a2ui` GCP service and Toolkit review/approval
+API. Use that agent for the recommendation demo. The October 4 host check
+verified native review cards and approval/cancel controls, not a write. Do not
+click approval without authority to execute the exact transfer. Do not claim
+the map/graph chat automatically hands evidence to this separate agent or
+that its configured service actor is per-user delegation.
 
 If implementing writes, require explicit authenticated user approval bound to
 the exact draft, use a short-lived single-use handle, revalidate and lock

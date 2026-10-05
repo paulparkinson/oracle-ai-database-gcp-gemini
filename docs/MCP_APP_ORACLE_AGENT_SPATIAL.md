@@ -11,9 +11,9 @@ Gemini Enterprise
           -> validated spatial JSON
             -> GeoJSON -> MapLibre MCP App
 
-A2UI transfer review
-  -> transfer draft (current Java implementation)
-  -> explicit approval -> Oracle Database MCP Java Toolkit (write extension)
+Oracle Supply-Chain A2UI agent (separate GCP service)
+  -> governed Toolkit recommendations -> native A2UI review
+  -> explicit approval -> Oracle Database MCP Java Toolkit write operation
 ```
 
 The MCP spatial tool does not accept an `oracleAgentEvidence` argument. That
@@ -21,6 +21,11 @@ would allow the host model to supply unverified coordinates. It accepts a
 SKU and optional display-row limit, asks the Java gateway to call the managed
 agent, and renders only the validated response. There is no spatial fallback to static data, Select AI, or
 the MCP Toolkit. A failed managed-agent call is surfaced as an error.
+
+The [two-lane runbook](INVENTORY_UI_ARCHITECTURE.md) identifies the tested
+**Oracle Supply-Chain A2UI** agent. Do not confuse it with the older draft-only
+Java inventory-action coordinator. Recommendation rendering was tested without
+approving or executing a transfer.
 
 The data is **live database-backed reads of seeded demo data**, not production
 inventory telemetry. The SQL setup/seed files populate Oracle tables; they are

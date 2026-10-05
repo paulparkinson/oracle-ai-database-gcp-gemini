@@ -55,8 +55,7 @@ begin
                    json_object('owner' value 'FINANCIAL', 'name' value 'SC_INVENTORY_RISK_SUMMARY'),
                    json_object('owner' value 'FINANCIAL', 'name' value 'SC_WAREHOUSE_GEO'),
                    json_object('owner' value 'FINANCIAL', 'name' value 'SC_WAREHOUSE_RISK_SNAPSHOT'),
-                   json_object('owner' value 'FINANCIAL', 'name' value 'SC_INVENTORY_RISK_DEMO_V'),
-                   json_object('owner' value 'FINANCIAL', 'name' value 'SUPPLY_CHAIN_GRAPH')
+                   json_object('owner' value 'FINANCIAL', 'name' value 'SC_INVENTORY_RISK_DEMO_V')
                )
                returning clob
            )
