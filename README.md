@@ -145,8 +145,13 @@ The inventory-system gateway can delegate general inventory and database-style q
 Oracle AI Database Agent in Gemini Enterprise:
 
 ```text
-Which products are at risk of stockouts next quarter, and which regions are driving that risk?
+List SKUs with risk of stock outages, highest risk first.
 ```
+
+The Google Select AI setup uses `gemini-3.7-flash` with inventory and calendar
+quarter guidance. The risk list reports estimates for the latest stored quarter.
+An explicit “next quarter” question uses the database date and can return no
+matching estimates. These are stored demo estimates, not new forecasts.
 
 Use `oracle_select_ai_agent` only as an explicitly identified fallback or
 comparison. It should not replace the managed Marketplace agent in the primary

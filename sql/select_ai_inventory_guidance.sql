@@ -1,0 +1,6 @@
+-- Shared domain context for inventory NL-to-SQL. No credentials or seed results.
+variable inventory_guidance clob
+begin
+    :inventory_guidance := q'~Use FINANCIAL.SC_INVENTORY_RISK_SUMMARY for existing quarterly stockout estimates and FINANCIAL.SC_PRODUCTS for product names. STOCKOUT_PROBABILITY is on a 0 to 1 scale. PRIMARY_REGION is the recorded risk region, not proof of causation. QUARTER_LABEL uses YYYY-Qn. For next quarter use TO_CHAR(ADD_MONTHS(SYSDATE,3),'YYYY') || '-Q' || TO_CHAR(ADD_MONTHS(SYSDATE,3),'Q'). Never compare QUARTER_LABEL with English words or omit a requested quarter. No rows means no stored estimate; do not substitute another quarter. For stockout-risk lists use active estimates (ACTIVE_FLAG = 'Y') with STOCKOUT_PROBABILITY > 0. Include PRODUCT_ID, PRODUCT_NAME, QUARTER_LABEL, STOCKOUT_PROBABILITY, PRIMARY_REGION. Order by STOCKOUT_PROBABILITY descending, then PRODUCT_ID. If no quarter is specified use the latest stored QUARTER_LABEL, not an assumed current quarter. These are stored demo estimates, not newly computed forecasts. When generating SQL, return only one Oracle SELECT statement, without commentary. For explicit SQL execution requests, preserve the supplied SQL and requested response format rather than applying the risk-list defaults.~';
+end;
+/
